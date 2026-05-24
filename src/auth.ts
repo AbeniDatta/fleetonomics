@@ -24,16 +24,30 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-function authorizeWithDemo(email: string, password: string) {
+async function authorizeWithDemo(email: string, password: string) {
   if (normalizeEmail(email) !== normalizeEmail(demoEmail) || password !== demoPassword) return null;
   const roles = (process.env.AUTH_DEMO_ROLES ?? "Ops Manager")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+  const normalizedEmail = normalizeEmail(email);
+  let id = "demo-ops";
+
+  const { isDatabaseConfigured } = await import("@/lib/db");
+  if (isDatabaseConfigured()) {
+    try {
+      const { ensurePersistedUserId } = await import("@/lib/geofences/persist-user");
+      const dbId = await ensurePersistedUserId("demo-ops", normalizedEmail);
+      if (dbId) id = dbId;
+    } catch (err) {
+      console.error("[auth] ensure demo user for session failed", err);
+    }
+  }
+
   return {
-    id: "demo-ops",
+    id,
     name: "Ops Manager",
-    email,
+    email: normalizedEmail,
     roles,
   };
 }
@@ -62,7 +76,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
         }
 
-        return authorizeWithDemo(email, password);
+        return await authorizeWithDemo(email, password);
       },
     }),
   ],

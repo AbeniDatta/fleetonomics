@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { z } from "zod";
+import { getSessionUserKey } from "@/lib/auth/session-user";
 import { createGeofence, listGeofencesForUser } from "@/lib/geofences/store";
 
 const ringSchema = z.array(z.tuple([z.number(), z.number()])).min(3);
@@ -11,24 +11,15 @@ const postSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
-async function getUserId(): Promise<string | null> {
-  const session = await auth();
-  const id = session?.user?.id;
-  if (id && id.length > 0) return id;
-  const email = session?.user?.email;
-  if (email) return `email:${email}`;
-  return null;
-}
-
 export async function GET() {
-  const userId = await getUserId();
+  const userId = await getSessionUserKey();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const geofences = await listGeofencesForUser(userId);
   return NextResponse.json({ geofences });
 }
 
 export async function POST(req: Request) {
-  const userId = await getUserId();
+  const userId = await getSessionUserKey();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   let json: unknown;
   try {

@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import type { Geofence as PrismaGeofence } from "@prisma/client";
 import { getPrisma } from "@/lib/db";
 import type { GeofenceRing, SavedGeofence } from "./types";
-import { resolvePersistedUserId } from "./persist-user";
+import { ensurePersistedUserId } from "./persist-user";
 import * as fileStore from "./store-file";
 
 function toSavedGeofence(row: PrismaGeofence, sessionUserId: string): SavedGeofence {
@@ -18,7 +18,7 @@ function toSavedGeofence(row: PrismaGeofence, sessionUserId: string): SavedGeofe
 }
 
 async function dbUserId(sessionUserId: string): Promise<string | null> {
-  return resolvePersistedUserId(sessionUserId);
+  return ensurePersistedUserId(sessionUserId);
 }
 
 export async function listGeofencesForUser(sessionUserId: string): Promise<SavedGeofence[]> {

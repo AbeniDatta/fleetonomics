@@ -1,20 +1,11 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { z } from "zod";
+import { getSessionUserKey } from "@/lib/auth/session-user";
 import { isDatabaseConfigured } from "@/lib/db";
 import { appendGeofenceEvents, listGeofenceEventsForUser } from "@/lib/geofence-events/store";
 
-async function getUserId(): Promise<string | null> {
-  const session = await auth();
-  const id = session?.user?.id;
-  if (id && id.length > 0) return id;
-  const email = session?.user?.email;
-  if (email) return `email:${email}`;
-  return null;
-}
-
 export async function GET(req: Request) {
-  const userId = await getUserId();
+  const userId = await getSessionUserKey();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
@@ -47,7 +38,7 @@ const postSchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const userId = await getUserId();
+  const userId = await getSessionUserKey();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let json: unknown;

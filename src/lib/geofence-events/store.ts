@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import type { GeofenceEvent as PrismaGeofenceEvent } from "@prisma/client";
 import { getPrisma } from "@/lib/db";
-import { resolvePersistedUserId } from "@/lib/geofences/persist-user";
+import { ensurePersistedUserId } from "@/lib/geofences/persist-user";
 import type { GeofenceEvent, GeofenceEventKind } from "./types";
 import * as fileStore from "./store-file";
 
@@ -24,7 +24,7 @@ function toGeofenceEvent(row: PrismaGeofenceEvent, sessionUserId: string): Geofe
 }
 
 async function dbUserId(sessionUserId: string): Promise<string | null> {
-  return resolvePersistedUserId(sessionUserId);
+  return ensurePersistedUserId(sessionUserId);
 }
 
 async function pruneOldEvents(userId: string): Promise<void> {

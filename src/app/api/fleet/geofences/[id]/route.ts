@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { z } from "zod";
+import { getSessionUserKey } from "@/lib/auth/session-user";
 import { deleteGeofence, updateGeofence } from "@/lib/geofences/store";
 
 const ringSchema = z.array(z.tuple([z.number(), z.number()])).min(3);
@@ -11,19 +11,10 @@ const patchSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
-async function getUserId(): Promise<string | null> {
-  const session = await auth();
-  const id = session?.user?.id;
-  if (id && id.length > 0) return id;
-  const email = session?.user?.email;
-  if (email) return `email:${email}`;
-  return null;
-}
-
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: Request, ctx: Ctx) {
-  const userId = await getUserId();
+  const userId = await getSessionUserKey();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await ctx.params;
   let json: unknown;
@@ -45,7 +36,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
 }
 
 export async function DELETE(_req: Request, ctx: Ctx) {
-  const userId = await getUserId();
+  const userId = await getSessionUserKey();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await ctx.params;
   const ok = await deleteGeofence(userId, id);
