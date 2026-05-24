@@ -1,0 +1,131 @@
+// Fleetonomics — PostgreSQL schema aligned with the current UI.
+// Datasource URL: prisma.config.ts (DIRECT_URL).
+//
+// Keep only tables that match (a) data the app writes today, or (b) existing API routes
+// already wired to Prisma. Add report/telemetry caches when you build history UIs.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Auth (login)
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String
+  roles        String[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  geofences      Geofence[]
+  geofenceEvents GeofenceEvent[]
+  reportCaches   FleetReportCache[]
+}
+
+// ---------------------------------------------------------------------------
+// Geofencing — written on Geo Fencing / fleet map; read on Safety & Geo Fencing
+// (replaces data/geofences.json + geofence-events.json)
+// ---------------------------------------------------------------------------
+
+model Geofence {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String    @db.VarChar(200)
+  ring      Json // [[lat,lng], ...]
+  enabled   Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  events GeofenceEvent[]
+
+  @@index([userId, updatedAt])
+  @@index([userId, name])
+}
+
+model GeofenceEvent {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  geofenceId String?
+  geofence   Geofence? @relation(fields: [geofenceId], references: [id], onDelete: SetNull)
+  fenceName  String    @db.VarChar(200)
+  vehicleId  String    @db.VarChar(128)
+  plate      String    @db.VarChar(64)
+  kind       String    @db.VarChar(16) // exit | cross
+  message    String    @db.Text
+  lat        Float
+  lng        Float
+  occurredAt DateTime
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, occurredAt(sort: Desc)])
+  @@index([plate, occurredAt(sort: Desc)])
+}
+
+// ---------------------------------------------------------------------------
+// Internal ops — used by /api/fleet/trips & /maintenance (pages exist, not in nav)
+// ---------------------------------------------------------------------------
+
+model TripBooking {
+  id          String   @id @default(cuid())
+  requester   String
+  route       String
+  scheduledAt DateTime
+  vehicleType String
+  priority    String
+  status      String   @default("pending")
+  createdAt   DateTime @default(now())
+}
+
+model WorkOrder {
+  id           String   @id @default(cuid())
+  vehiclePlate String
+  type         String
+  issue        String
+  priority     String
+  status       String
+  createdAt    DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Compliance docs — used by /api/fleet/compliance (/compliance page, not in nav)
+// Incidents & fines on that page are still demo-only; add models when you add forms.
+// ---------------------------------------------------------------------------
+
+model ComplianceDocument {
+  id         String   @id @default(cuid())
+  subjectId  String
+  docType    String
+  expiresOn  DateTime
+  storageUrl String?
+  createdAt  DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Report cache — optional persistence for Reports (mileage) & Fuel (oil track) APIs.
+// No history UI yet; store keyed responses so reports can replay past pulls.
+// ---------------------------------------------------------------------------
+
+model FleetReportCache {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  /// Stable key, e.g. mileage:2025-05-01:2025-05-18:page1
+  cacheKey   String   @db.VarChar(512)
+  endpoint   String   @db.VarChar(256)
+  payload    Json
+  fetchedAt  DateTime @default(now())
+
+  @@unique([cacheKey])
+  @@index([endpoint, fetchedAt(sort: Desc)])
+}
