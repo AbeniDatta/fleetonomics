@@ -8,7 +8,7 @@ const demoPassword = process.env.AUTH_DEMO_PASSWORD ?? "changeme";
 
 async function authorizeWithDatabase(email: string, password: string) {
   const { getPrisma } = await import("@/lib/db");
-  const user = await getPrisma().user.findUnique({ where: { email } });
+  const user = await getPrisma().user.findUnique({ where: { email: normalizeEmail(email) } });
   if (!user) return null;
   const valid = await compare(password, user.passwordHash);
   if (!valid) return null;
@@ -20,8 +20,12 @@ async function authorizeWithDatabase(email: string, password: string) {
   };
 }
 
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 function authorizeWithDemo(email: string, password: string) {
-  if (email !== demoEmail || password !== demoPassword) return null;
+  if (normalizeEmail(email) !== normalizeEmail(demoEmail) || password !== demoPassword) return null;
   const roles = (process.env.AUTH_DEMO_ROLES ?? "Ops Manager")
     .split(",")
     .map((s) => s.trim())
@@ -51,7 +55,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const { isDatabaseConfigured } = await import("@/lib/db");
         if (isDatabaseConfigured()) {
           try {
-            return await authorizeWithDatabase(email, password);
+            const dbUser = await authorizeWithDatabase(email, password);
+            if (dbUser) return dbUser;
           } catch (err) {
             console.error("[auth] database login failed", err);
           }
