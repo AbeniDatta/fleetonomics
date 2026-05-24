@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  Activity,
   Car,
   CheckCircle2,
   Droplets,
@@ -11,13 +12,11 @@ import {
   Fuel,
   MapPin,
   AlertTriangle,
-  TrendingDown,
-  TrendingUp,
+  Route,
   XCircle,
 } from "lucide-react";
 import {
   CartesianGrid,
-  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -25,13 +24,18 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { Alarm, Vehicle } from "@/lib/uctracking/schemas";
+import type { Alarm, DashboardKpi, Vehicle } from "@/lib/uctracking/schemas";
+import {
+  fuelPerVehicleMetrics,
+  type FuelPerVehicleRow,
+} from "@/lib/uctracking/normalize-fleet-fuel-snapshot";
+import { formatLatLng } from "@/lib/dashboard/vehicle-table-rows";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { VmsBackBar, VmsPageHero, VmsStatCard } from "@/components/vms/vms-page-blocks";
 import { cn } from "@/lib/utils";
 
-type TableStatusFilter = "all" | "active" | "maintenance" | "offline";
+type KpiResponse = DashboardKpi & { source?: string };
 
 const chartTooltip = {
   contentStyle: {
@@ -42,16 +46,6 @@ const chartTooltip = {
   },
   labelStyle: { color: "#fafafa" },
 };
-
-const MONTHLY_FUEL_COST = [
-  { month: "Jan", consumption: 3200, costM: 4.8 },
-  { month: "Feb", consumption: 3800, costM: 5.7 },
-  { month: "Mar", consumption: 4100, costM: 6.1 },
-  { month: "Apr", consumption: 3600, costM: 5.4 },
-  { month: "May", consumption: 4500, costM: 6.8 },
-  { month: "Jun", consumption: 5200, costM: 7.6 },
-  { month: "Jul", consumption: 4800, costM: 7.1 },
-];
 
 async function fetchVehicles() {
   const res = await fetch("/api/fleet/vehicles");
@@ -65,35 +59,59 @@ async function fetchAlarms() {
   return res.json() as Promise<{ source: string; data: Alarm[] }>;
 }
 
-function inferLocation(label: string | null | undefined): "CHO" | "Bonny" | "Other" {
-  const n = (label ?? "").toLowerCase();
-  if (n.includes("bonny")) return "Bonny";
-  if (n.includes("cho") || n.includes("ph gate") || n.includes("depot") || n.includes("trans-amadi") || n.includes("eleme")) {
-    return "CHO";
-  }
-  return "Other";
+async function fetchKpi() {
+  const res = await fetch("/api/fleet/kpi");
+  if (!res.ok) throw new Error("kpi");
+  return res.json() as Promise<KpiResponse>;
 }
 
-function formatNgn(n: number) {
-  return `₦${Math.round(n).toLocaleString("en-NG")}`;
+async function fetchFuelPerVehicle() {
+  const res = await fetch("/api/fleet/fuel/per-vehicle");
+  if (!res.ok) throw new Error("fuel");
+  return res.json() as Promise<{ source: string; vehicles: FuelPerVehicleRow[] }>;
 }
 
-function fuelBarColor(pct: number) {
-  if (pct >= 50) return "bg-emerald-500";
-  if (pct >= 30) return "bg-nlng-amber";
-  return "bg-red-500";
+async function fetchFuelHourly() {
+  const res = await fetch("/api/fleet/dashboard/fuel-hourly");
+  if (!res.ok) throw new Error("fuel-hourly");
+  return res.json() as Promise<{ source: string; data: { hour: string; liters: number }[] }>;
+}
+
+function formatFuelLiters(l: number | null): string {
+  if (l == null || !Number.isFinite(l)) return "—";
+  return `${l.toLocaleString(undefined, { maximumFractionDigits: 1 })} L`;
+}
+
+function fuelBarPercent(liters: number | null, maxLiters = 200): number {
+  if (liters == null || !Number.isFinite(liters)) return 0;
+  return Math.min(100, Math.round((liters / maxLiters) * 100));
+}
+
+function fuelBarColorFromLiters(liters: number | null, maxLiters: number): string {
+  const pct = fuelBarPercent(liters, maxLiters);
+  if (liters == null) return "bg-zinc-600";
+  if (pct < 15) return "bg-red-500";
+  if (pct < 30) return "bg-nlng-amber";
+  return "bg-emerald-500";
 }
 
 function displayStatus(v: Vehicle): { label: string; variant: "success" | "warn" | "danger" | "default" } {
   if (v.status === "offline") return { label: "Offline", variant: "default" };
-  if (v.status === "parked" || v.status === "idle") return { label: "Maintenance", variant: "warn" };
+  if (v.status === "parked") return { label: "Parked", variant: "warn" };
+  if (v.status === "idle") return { label: "Idle", variant: "warn" };
+  if (v.status === "moving") return { label: "Moving", variant: "success" };
   if (v.status === "breach" || v.status === "alert") return { label: "Alert", variant: "danger" };
-  return { label: "Active", variant: "success" };
+  return { label: "Online", variant: "success" };
 }
 
-function deviceBucket(v: Vehicle, kind: "fuel" | "gps" | "dms"): "online" | "warning" | "offline" {
+function deviceBucket(
+  v: Vehicle,
+  kind: "fuel" | "gps" | "dms",
+  fuelRow?: FuelPerVehicleRow,
+): "online" | "warning" | "offline" {
   if (v.status === "offline") return "offline";
   if (kind === "fuel") {
+    if (fuelRow?.fuelVolumeL != null) return fuelRow.fuelVolumeL < 15 ? "warning" : "online";
     if (v.fuelPercent != null) return v.fuelPercent < 15 ? "warning" : "online";
     return "warning";
   }
@@ -101,11 +119,13 @@ function deviceBucket(v: Vehicle, kind: "fuel" | "gps" | "dms"): "online" | "war
     if (v.position?.lat != null && v.position?.lng != null) return "online";
     return "warning";
   }
-  if (v.driverScore != null || v.driverName) return v.driverScore != null && v.driverScore < 60 ? "warning" : "online";
+  if (v.driverName || v.driverScore != null) {
+    return v.driverScore != null && v.driverScore < 60 ? "warning" : "online";
+  }
   return "warning";
 }
 
-function computeDeviceHealth(vehicles: Vehicle[]) {
+function computeDeviceHealth(vehicles: Vehicle[], fuelByKey: Map<string, FuelPerVehicleRow>) {
   const kinds = ["fuel", "gps", "dms"] as const;
   const out: Record<(typeof kinds)[number], { online: number; warning: number; offline: number }> = {
     fuel: { online: 0, warning: 0, offline: 0 },
@@ -113,8 +133,9 @@ function computeDeviceHealth(vehicles: Vehicle[]) {
     dms: { online: 0, warning: 0, offline: 0 },
   };
   for (const v of vehicles) {
+    const fuelRow = fuelByKey.get(v.plate) ?? (v.devIdno ? fuelByKey.get(v.devIdno) : undefined);
     for (const k of kinds) {
-      out[k][deviceBucket(v, k)]++;
+      out[k][deviceBucket(v, k, fuelRow)]++;
     }
   }
   return out;
@@ -147,7 +168,7 @@ function DeviceHealthCard({
           </div>
           <div>
             <div className="font-semibold text-zinc-100">{title}</div>
-            <div className="text-sm text-zinc-500">{total} devices</div>
+            <div className="text-sm text-zinc-500">{total} vehicles</div>
           </div>
         </div>
         <ul className="space-y-2 text-sm">
@@ -185,44 +206,84 @@ function DeviceHealthCard({
 }
 
 export function VehiclesDashboardView() {
-  const [tableStatus, setTableStatus] = useState<TableStatusFilter>("all");
+  const vehQ = useQuery({
+    queryKey: ["fleet-vehicles"],
+    queryFn: fetchVehicles,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  const alarmQ = useQuery({
+    queryKey: ["fleet-alarms"],
+    queryFn: fetchAlarms,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  const kpiQ = useQuery({
+    queryKey: ["fleet-kpi"],
+    queryFn: fetchKpi,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  const fuelQ = useQuery({
+    queryKey: ["fuel-per-vehicle"],
+    queryFn: fetchFuelPerVehicle,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  const fuelHourlyQ = useQuery({
+    queryKey: ["dashboard-fuel-hourly"],
+    queryFn: fetchFuelHourly,
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+  });
 
-  const vehQ = useQuery({ queryKey: ["fleet-vehicles"], queryFn: fetchVehicles });
-  const alarmQ = useQuery({ queryKey: ["fleet-alarms"], queryFn: fetchAlarms });
+  const fleetVehicles = useMemo(() => {
+    const list = vehQ.data?.data ?? [];
+    return [...list].sort((a, b) => a.plate.localeCompare(b.plate));
+  }, [vehQ.data?.data]);
 
-  const fleetVehicles = useMemo(() => vehQ.data?.data ?? [], [vehQ.data?.data]);
+  const fuelByKey = useMemo(() => {
+    const map = new Map<string, FuelPerVehicleRow>();
+    for (const row of fuelQ.data?.vehicles ?? []) {
+      map.set(row.plate, row);
+      if (row.devIdno) map.set(row.devIdno, row);
+    }
+    return map;
+  }, [fuelQ.data?.vehicles]);
+
+  const fuelMetrics = useMemo(() => fuelPerVehicleMetrics(fuelQ.data?.vehicles ?? []), [fuelQ.data?.vehicles]);
+
+  const maxTankL = useMemo(() => {
+    const volumes = (fuelQ.data?.vehicles ?? [])
+      .map((r) => r.fuelVolumeL)
+      .filter((v): v is number => v != null && v > 0);
+    return volumes.length > 0 ? Math.max(...volumes, 80) : 200;
+  }, [fuelQ.data?.vehicles]);
 
   const metrics = useMemo(() => {
     const total = fleetVehicles.length;
-    const maintenance = fleetVehicles.filter((v) => v.status === "parked" || v.status === "idle").length;
-    const active = fleetVehicles.filter((v) => v.status !== "offline" && v.status !== "parked" && v.status !== "idle").length;
-    const withFuel = fleetVehicles.filter((v) => v.fuelPercent != null);
-    const avgFuel =
-      withFuel.length > 0 ? withFuel.reduce((s, v) => s + (v.fuelPercent ?? 0), 0) / withFuel.length : null;
-    const efficiency = avgFuel != null ? (12.5 * avgFuel) / 68 : 12.5;
-    const consumption = total > 0 ? Math.round(total * 29.4) : 9760;
-    const monthlyCost = total > 0 ? Math.round(consumption * 1750) : 17_100_000;
-    return { total, maintenance, active, efficiency, consumption, monthlyCost };
+    const online = fleetVehicles.filter((v) => v.status !== "offline").length;
+    const idle = fleetVehicles.filter((v) => v.status === "idle" || v.status === "parked").length;
+    const moving = fleetVehicles.filter((v) => (v.speedKmh ?? 0) > 0).length;
+    return { total, online, idle, moving };
   }, [fleetVehicles]);
 
-  const deviceHealth = useMemo(() => computeDeviceHealth(fleetVehicles), [fleetVehicles]);
+  const kpi = kpiQ.data;
+  const deviceHealth = useMemo(() => computeDeviceHealth(fleetVehicles, fuelByKey), [fleetVehicles, fuelByKey]);
 
   const theftCount = useMemo(() => {
     const fromAlarms = (alarmQ.data?.data ?? []).filter((a) => /theft|fuel\s*drop|drain/i.test(a.message)).length;
     const fromVehicles = fleetVehicles.filter((v) => /theft|fuel drop/i.test(v.alarmSummary ?? "")).length;
-    const total = fromAlarms + fromVehicles;
-    return total > 0 ? total : 2;
+    return fromAlarms + fromVehicles;
   }, [alarmQ.data?.data, fleetVehicles]);
 
-  const tableRows = useMemo(() => {
-    return fleetVehicles.filter((v) => {
-      const st = displayStatus(v);
-      if (tableStatus === "active" && st.label !== "Active") return false;
-      if (tableStatus === "maintenance" && st.label !== "Maintenance") return false;
-      if (tableStatus === "offline" && st.label !== "Offline") return false;
-      return true;
-    });
-  }, [fleetVehicles, tableStatus]);
+  const openAlarms = useMemo(
+    () => (alarmQ.data?.data ?? []).filter((a) => a.acknowledged !== true).length,
+    [alarmQ.data?.data],
+  );
+
+  const fuelHourly = fuelHourlyQ.data?.data ?? [];
+  const fuelChartHasData = fuelHourly.some((p) => p.liters > 0);
 
   return (
     <div className="space-y-6 md:space-y-8">
@@ -230,50 +291,57 @@ export function VehiclesDashboardView() {
 
       <VmsPageHero
         icon={Car}
-        title="Vehicles Dashboard"
+        title="Vehicles"
         description="Monitor fleet performance, device health, and fuel consumption"
       />
 
+      {vehQ.isError ? (
+        <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          Could not load the fleet list from uctracking. Check your connection and{" "}
+          <code className="text-red-100">UCTRACKING_*</code> settings in <code className="text-red-100">.env.local</code>.
+        </p>
+      ) : null}
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 md:gap-5">
         <VmsStatCard
-          label="Total Vehicles"
-          value={metrics.total}
-          sub={`${metrics.maintenance} in maintenance`}
-          trend={`${metrics.active} active vs last month`}
-          trendTone="good"
+          label="Total vehicles"
+          value={vehQ.isLoading ? "—" : metrics.total.toLocaleString()}
+          sub={`${metrics.idle} idle or parked`}
+          trend={`${metrics.online} online now`}
+          trendTone={metrics.online > 0 ? "good" : "neutral"}
           icon={Car}
         />
         <VmsStatCard
-          label="Fuel Efficiency"
-          value={`${metrics.efficiency.toFixed(1)} km/L`}
-          sub="Average km/L"
-          trend="+4.2% vs last month"
-          trendTone="good"
-          icon={TrendingUp}
-        />
-        <VmsStatCard
-          label="Fuel Consumption"
-          value={`${metrics.consumption.toLocaleString()} L`}
-          sub="This month"
-          trend="+8.3% vs last month"
-          trendTone="bad"
+          label="Fleet fuel on board"
+          value={fuelMetrics.totalFleetFuelL != null ? formatFuelLiters(fuelMetrics.totalFleetFuelL) : "—"}
+          sub={`${fuelMetrics.withVolumeCount} reporting tank volume`}
+          trend={fuelQ.isFetching ? "Refreshing fuel data…" : `${fuelMetrics.movingCount} vehicles moving`}
+          trendTone={fuelMetrics.withVolumeCount > 0 ? "good" : "neutral"}
           icon={Fuel}
         />
         <VmsStatCard
-          label="Monthly Cost"
-          value={formatNgn(metrics.monthlyCost)}
-          sub="Fuel expenses"
-          trend="-3.2% vs last month"
-          trendTone="good"
-          icon={TrendingDown}
+          label="Distance today"
+          value={kpi?.kmToday != null ? `${kpi.kmToday.toLocaleString()} km` : "—"}
+          sub="Fleet total from device status"
+          trend={kpiQ.isFetching ? "Updating…" : `${metrics.moving} vehicles in motion`}
+          trendTone="neutral"
+          icon={Route}
+        />
+        <VmsStatCard
+          label="Open alarms"
+          value={openAlarms.toLocaleString()}
+          sub="Active issues in alarm feed"
+          trend={openAlarms === 0 ? "No open alarms" : "Review on ADAS page"}
+          trendTone={openAlarms > 0 ? "bad" : "good"}
+          icon={Activity}
         />
       </div>
 
       <div>
-        <h2 className="vms-page-title mb-4">Device Health Status</h2>
+        <h2 className="vms-page-title mb-4">Device health</h2>
         <div className="grid gap-4 md:grid-cols-3 md:gap-5">
           <DeviceHealthCard
-            title="Fuel Management Devices"
+            title="Fuel telemetry"
             icon={Droplets}
             total={fleetVehicles.length}
             online={deviceHealth.fuel.online}
@@ -281,7 +349,7 @@ export function VehiclesDashboardView() {
             offline={deviceHealth.fuel.offline}
           />
           <DeviceHealthCard
-            title="GPS Tracking"
+            title="GPS tracking"
             icon={MapPin}
             total={fleetVehicles.length}
             online={deviceHealth.gps.online}
@@ -290,7 +358,7 @@ export function VehiclesDashboardView() {
             detailsHref="/geo-fencing"
           />
           <DeviceHealthCard
-            title="Driver Monitoring System"
+            title="Driver monitoring"
             icon={Eye}
             total={fleetVehicles.length}
             online={deviceHealth.dms.online}
@@ -305,8 +373,7 @@ export function VehiclesDashboardView() {
         <div className="flex items-start gap-3 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 md:px-5 md:py-4">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-400" />
           <p className="text-sm text-red-100/90">
-            <span className="font-semibold text-red-50">{theftCount} theft incident(s)</span> detected this month. Review
-            security protocols.
+            <span className="font-semibold text-red-50">{theftCount} fuel security alert(s)</span> in the current feed.
           </p>
         </div>
       ) : null}
@@ -314,149 +381,115 @@ export function VehiclesDashboardView() {
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>Fuel Consumption vs Cost</CardTitle>
-            <p className="mt-1 text-sm text-zinc-400">Monthly correlation trends</p>
-          </div>
-          <div className="flex flex-wrap gap-4 text-xs md:text-sm">
-            <span className="inline-flex items-center gap-2 text-zinc-400">
-              <span className="h-2.5 w-2.5 rounded-full bg-nlng-amber" /> Consumption (L)
-            </span>
-            <span className="inline-flex items-center gap-2 text-zinc-400">
-              <span className="h-2.5 w-2.5 rounded-full bg-sky-400" /> Cost (₦)
-            </span>
+            <CardTitle>Fuel use today</CardTitle>
+            <p className="mt-1 text-sm text-zinc-400">Hourly consumption from today&apos;s telematics report</p>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="h-72 w-full md:h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={MONTHLY_FUEL_COST} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
-                <CartesianGrid stroke="#3f3f46" strokeDasharray="3 3" />
-                <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#a1a1aa" }} />
-                <YAxis
-                  yAxisId="left"
-                  tick={{ fontSize: 11, fill: "#f4a62a" }}
-                  tickFormatter={(v) => `${(v / 1000).toFixed(1)}k`}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  tick={{ fontSize: 11, fill: "#38bdf8" }}
-                  tickFormatter={(v) => `₦${v}M`}
-                />
-                <Tooltip
-                  {...chartTooltip}
-                  formatter={(value: number, name: string) => {
-                    if (name === "Cost (₦)") return [formatNgn(value * 1_000_000), name];
-                    return [`${value.toLocaleString()} L`, name];
-                  }}
-                />
-                <Legend />
-                <Line
-                  yAxisId="left"
-                  type="monotone"
-                  dataKey="consumption"
-                  name="Consumption (L)"
-                  stroke="#F4A62A"
-                  strokeWidth={2}
-                  dot={false}
-                />
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey="costM"
-                  name="Cost (₦)"
-                  stroke="#38bdf8"
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          {fuelHourlyQ.isLoading ? (
+            <p className="py-16 text-center text-sm text-zinc-500">Loading fuel chart…</p>
+          ) : !fuelChartHasData ? (
+            <p className="py-16 text-center text-sm text-zinc-500">
+              No consumption data for today yet. Run a fuel report on the Fuel page or wait for the next sync.
+            </p>
+          ) : (
+            <div className="h-72 w-full md:h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={fuelHourly} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                  <CartesianGrid stroke="#3f3f46" strokeDasharray="3 3" />
+                  <XAxis dataKey="hour" tick={{ fontSize: 12, fill: "#a1a1aa" }} />
+                  <YAxis tick={{ fontSize: 11, fill: "#f4a62a" }} tickFormatter={(v) => `${v} L`} />
+                  <Tooltip
+                    {...chartTooltip}
+                    formatter={(value: number) => [`${value.toLocaleString()} L`, "Consumption"]}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="liters"
+                    name="Consumption (L)"
+                    stroke="#F4A62A"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <CardTitle>Vehicle List</CardTitle>
-            <p className="mt-1 text-sm text-zinc-400">
-              {tableRows.length} vehicles
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <label className="inline-flex items-center gap-2 rounded-lg border border-vms-border bg-vms-inset px-3 py-2 text-sm text-zinc-300">
-              <CheckCircle2 className="h-4 w-4 text-zinc-500" />
-              <select
-                className="bg-transparent outline-none"
-                value={tableStatus}
-                onChange={(e) => setTableStatus(e.target.value as TableStatusFilter)}
-              >
-                <option value="all">All Status</option>
-                <option value="active">Active</option>
-                <option value="maintenance">Maintenance</option>
-                <option value="offline">Offline</option>
-              </select>
-            </label>
-          </div>
+        <CardHeader>
+          <CardTitle>Vehicle list</CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           {vehQ.isLoading ? (
-            <div className="py-8 text-center text-zinc-500">Loading vehicles…</div>
-          ) : tableRows.length === 0 ? (
-            <div className="py-8 text-center text-zinc-500">No vehicles match the current filters.</div>
+            <p className="text-sm text-zinc-500">Loading vehicles…</p>
+          ) : fleetVehicles.length === 0 ? (
+            <p className="text-sm text-zinc-500">No vehicles in the fleet list.</p>
           ) : (
-            <table className="w-full min-w-[800px] text-left text-sm">
+            <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="text-xs font-semibold uppercase tracking-wide text-zinc-500 md:text-sm">
                 <tr>
-                  <th className="border-b border-vms-border py-3 pr-4">Vehicle ID</th>
-                  <th className="border-b border-vms-border py-3 pr-4">Plate Number</th>
+                  <th className="border-b border-vms-border py-3 pr-4">Device number</th>
                   <th className="border-b border-vms-border py-3 pr-4">Driver</th>
                   <th className="border-b border-vms-border py-3 pr-4">Location</th>
-                  <th className="border-b border-vms-border py-3 pr-4">Fuel Level</th>
+                  <th className="border-b border-vms-border py-3 pr-4">Speed</th>
+                  <th className="border-b border-vms-border py-3 pr-4">Fuel volume</th>
                   <th className="border-b border-vms-border py-3">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {tableRows.map((v, i) => {
-                  const loc = inferLocation(v.locationLabel);
-                  const locLabel = loc === "Other" ? "CHO" : loc;
-                  const fuel = v.fuelPercent ?? 0;
+                {fleetVehicles.map((v) => {
+                  const fuelRow = fuelByKey.get(v.plate) ?? (v.devIdno ? fuelByKey.get(v.devIdno) : undefined);
+                  const fuelL = fuelRow?.fuelVolumeL ?? null;
+                  const speed = fuelRow?.speedKmh ?? v.speedKmh;
+                  const coords =
+                    v.position?.lat != null && v.position?.lng != null
+                      ? formatLatLng(v.position.lat, v.position.lng)
+                      : null;
+                  const location = coords ?? v.locationLabel ?? "—";
                   const st = displayStatus(v);
+                  const deviceId = v.devIdno ?? v.plate;
+
                   return (
                     <tr key={v.id} className="hover:bg-vms-inset/60">
-                      <td className="border-b border-vms-border py-3 pr-4 font-semibold text-zinc-100">
-                        <Link
-                          href={`/vehicles/${encodeURIComponent(v.plate)}`}
-                          className="text-sky-400 hover:underline"
-                        >
-                          VEH-{String(i + 1).padStart(3, "0")}
-                        </Link>
-                      </td>
                       <td className="border-b border-vms-border py-3 pr-4">
                         <Link
                           href={`/vehicles/${encodeURIComponent(v.plate)}`}
-                          className="font-medium text-sky-400 hover:underline"
+                          className="font-semibold text-sky-400 hover:underline"
                         >
-                          {v.plate}
+                          {deviceId}
                         </Link>
                       </td>
                       <td className="border-b border-vms-border py-3 pr-4 text-zinc-200">{v.driverName ?? "—"}</td>
-                      <td className="border-b border-vms-border py-3 pr-4">
-                        <Badge
-                          variant={locLabel === "Bonny" ? "warn" : "info"}
-                          className="inline-flex items-center gap-1"
-                        >
-                          <MapPin className="h-3 w-3" />
-                          {locLabel}
-                        </Badge>
+                      <td className="max-w-[12rem] border-b border-vms-border py-3 pr-4 tabular-nums text-zinc-200">
+                        {location}
+                      </td>
+                      <td
+                        className={cn(
+                          "border-b border-vms-border py-3 pr-4 tabular-nums",
+                          speed != null && speed > 90 ? "font-semibold text-red-400" : "text-zinc-200",
+                        )}
+                      >
+                        {speed != null ? `${Math.round(speed)} km/h` : "—"}
                       </td>
                       <td className="border-b border-vms-border py-3 pr-4">
-                        <div className="flex min-w-[120px] items-center gap-2">
-                          <div className="h-2 flex-1 overflow-hidden rounded-full bg-vms-inset">
-                            <div className={cn("h-full rounded-full", fuelBarColor(fuel))} style={{ width: `${fuel}%` }} />
+                        {fuelL != null ? (
+                          <div className="flex min-w-[120px] items-center gap-2">
+                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-vms-inset">
+                              <div
+                                className={cn("h-full rounded-full", fuelBarColorFromLiters(fuelL, maxTankL))}
+                                style={{ width: `${fuelBarPercent(fuelL, maxTankL)}%` }}
+                              />
+                            </div>
+                            <span className="tabular-nums text-zinc-200">{formatFuelLiters(fuelL)}</span>
                           </div>
-                          <span className="tabular-nums text-zinc-300">{v.fuelPercent != null ? `${fuel}%` : "—"}</span>
-                        </div>
+                        ) : v.fuelPercent != null ? (
+                          <span className="tabular-nums text-zinc-200">{v.fuelPercent}%</span>
+                        ) : (
+                          "—"
+                        )}
                       </td>
                       <td className="border-b border-vms-border py-3">
                         <Badge variant={st.variant}>{st.label}</Badge>
@@ -472,4 +505,3 @@ export function VehiclesDashboardView() {
     </div>
   );
 }
-

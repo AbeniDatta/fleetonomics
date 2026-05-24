@@ -4,6 +4,7 @@ import type { FuelPerVehicleRow } from "@/lib/uctracking/normalize-fleet-fuel-sn
 export type DashboardVehicleTableRow = {
   vehicleId: string;
   plate: string;
+  devIdno: string | null;
   driverName: string | null;
   lat: number | null;
   lng: number | null;
@@ -70,6 +71,7 @@ export function buildDashboardVehicleTableRows(
     return {
       vehicleId: v.id,
       plate: v.plate,
+      devIdno: v.devIdno?.trim() || null,
       driverName: v.driverName ?? null,
       lat,
       lng,

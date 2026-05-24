@@ -32,27 +32,47 @@ export function VmsShell({ children }: { children: React.ReactNode }) {
         />
 
         <div className="relative flex flex-wrap items-center justify-between gap-3 px-5 py-3 md:px-8 md:py-3.5">
-          <div className="flex items-center gap-3 md:gap-4">
-            <div
-              className="rounded-lg border px-2.5 py-1.5 shadow-sm"
-              style={{
-                borderColor: "var(--nlng-header-border)",
-                backgroundColor: "var(--nlng-header-surface)",
-              }}
+          <div className="flex min-w-0 flex-wrap items-center gap-3 sm:gap-4 md:gap-5">
+            <Link
+              href="/dashboard"
+              className="flex min-w-0 items-center gap-2.5 rounded-lg outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-nlng-cyan/50 sm:gap-3"
             >
-              <Image
-                src="/brand/nlng.png"
-                alt="NLNG"
-                priority
-                className="h-6 w-auto md:h-7"
-                width={120}
-                height={28}
-              />
-            </div>
-            <span className="hidden h-8 w-px sm:block" style={{ backgroundColor: "var(--nlng-header-border)" }} aria-hidden />
-            <div className="flex items-center gap-2.5 md:gap-3">
               <div
-                className="flex items-center justify-center rounded-lg border px-2 py-1 shadow-sm"
+                className="flex h-10 shrink-0 items-center justify-center rounded-lg border px-2.5 py-1.5 shadow-sm sm:h-11"
+                style={{
+                  borderColor: "var(--nlng-header-border)",
+                  backgroundColor: "var(--nlng-header-surface)",
+                }}
+              >
+                <Image
+                  src="/brand/nlng.png"
+                  alt="NLNG"
+                  priority
+                  width={201}
+                  height={148}
+                  className="h-8 w-auto max-w-[3.25rem] object-contain sm:h-9 sm:max-w-[3.75rem]"
+                />
+              </div>
+              <div className="min-w-0 leading-tight">
+                <div className="text-sm font-semibold tracking-tight text-[var(--nlng-header-text)] sm:text-[0.9375rem]">
+                  Nigeria LNG
+                </div>
+              </div>
+            </Link>
+
+            <span
+              className="hidden h-9 w-px shrink-0 sm:block"
+              style={{ backgroundColor: "var(--nlng-header-border)" }}
+              aria-hidden
+            />
+
+            <Link
+              href="/dashboard"
+              className="flex min-w-0 items-center rounded-lg outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-nlng-cyan/50"
+              aria-label="Fleetonomics — Smart Fleet Management"
+            >
+              <div
+                className="flex h-9 shrink-0 items-center rounded-lg border px-2.5 py-1 shadow-sm sm:h-10 sm:px-3"
                 style={{
                   borderColor: "var(--nlng-header-border)",
                   backgroundColor: "var(--nlng-header-surface)",
@@ -60,20 +80,14 @@ export function VmsShell({ children }: { children: React.ReactNode }) {
               >
                 <Image
                   src="/brand/fleetonomics.png"
-                  alt="Fleetonomics"
+                  alt="Fleetonomics — Smart Fleet Management"
                   priority
-                  className="h-7 w-auto md:h-8"
-                  width={160}
-                  height={36}
+                  width={222}
+                  height={52}
+                  className="h-7 w-auto max-w-[min(11rem,36vw)] object-contain object-left sm:h-8 sm:max-w-[12.5rem]"
                 />
               </div>
-              <div>
-                <div className="text-sm font-semibold leading-tight tracking-tight text-[var(--nlng-header-text)]">
-                  Fleetonomics
-                </div>
-                <div className="text-xs font-medium text-nlng-green">Smart Fleet Management</div>
-              </div>
-            </div>
+            </Link>
           </div>
 
           <div className="relative flex flex-wrap items-center gap-2.5 text-sm md:gap-3">

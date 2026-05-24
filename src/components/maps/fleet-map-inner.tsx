@@ -505,7 +505,7 @@ export function FleetMapInner({
   return (
     <div
       className={cn(
-        "flex flex-col gap-4 lg:flex-row lg:gap-6",
+        "flex flex-col gap-4 lg:flex-row lg:items-stretch lg:gap-6",
         hideGeofencingPanel && "h-full min-h-0 flex-1 gap-0 lg:flex-col lg:gap-0",
         className,
       )}
@@ -666,12 +666,17 @@ export function FleetMapInner({
       </div>
 
       {!hideGeofencingPanel ? (
-      <div className="w-full shrink-0 space-y-4 lg:w-[280px] xl:w-[320px]">
-        <Card>
-          <CardHeader>
+      <div
+        className={cn(
+          "w-full shrink-0 lg:w-[280px] xl:w-[320px]",
+          compact ? "flex min-h-0 flex-col lg:self-stretch" : "space-y-4",
+        )}
+      >
+        <Card className={cn(compact && "flex min-h-0 flex-1 flex-col")}>
+          <CardHeader className="shrink-0">
             <CardTitle>My geofences</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm">
+          <CardContent className={cn("space-y-3 text-sm", compact && "flex min-h-0 flex-1 flex-col")}>
             {geofencesQ.isError ? (
               <div className="text-sm text-red-400">Could not load geofences.</div>
             ) : null}
@@ -728,12 +733,17 @@ export function FleetMapInner({
               </div>
             ) : null}
 
-            <div className="space-y-2">
-              <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">Your fences</div>
+            <div className={cn("space-y-2", compact && "flex min-h-0 flex-1 flex-col")}>
+              <div className="shrink-0 text-xs font-medium uppercase tracking-wide text-zinc-500">Your fences</div>
               {geofences.length === 0 ? (
                 <div className="text-sm text-zinc-500">No geofences yet. Click &quot;New geofence&quot; to draw one.</div>
               ) : (
-                <ul className="max-h-[280px] space-y-2 overflow-y-auto">
+                <ul
+                  className={cn(
+                    "space-y-2 overflow-y-auto",
+                    compact ? "min-h-0 flex-1" : "max-h-[280px]",
+                  )}
+                >
                   {geofences.map((g, i) => {
                     const c = FENCE_COLORS[i % FENCE_COLORS.length];
                     return (

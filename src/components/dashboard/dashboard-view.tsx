@@ -307,56 +307,73 @@ export function DashboardView() {
             }
           />
           <div className="max-h-[min(36rem,62vh)] overflow-auto rounded-xl border border-zinc-800/80">
-            <div className="min-w-[680px]">
-              <div className="sticky top-0 z-10 grid grid-cols-[minmax(5rem,6rem)_minmax(5.5rem,7rem)_minmax(9rem,1fr)_minmax(5.5rem,7rem)_minmax(4.5rem,5.5rem)_minmax(4.5rem,5.5rem)_minmax(5.5rem,1fr)] gap-2 border-b border-zinc-800 bg-[#12151a] px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                <span>Plate</span>
-                <span>Driver</span>
-                <span>Lat, Lng</span>
-                <span>Status</span>
-                <span>Speed</span>
-                <span>Fuel</span>
-                <span>Alarm</span>
-              </div>
-              <div>
-                {vehicleTableQ.isLoading ? (
-                  <p className="px-4 py-8 text-center text-sm text-zinc-500">Loading fleet table…</p>
-                ) : tableRows.length === 0 ? (
-                  <p className="px-4 py-8 text-center text-sm text-zinc-500">No vehicles in the fleet list.</p>
-                ) : (
-                  tableRows.map((row) => (
-                    <Link
-                      key={row.vehicleId}
-                      href={`/vehicles/${encodeURIComponent(row.plate)}`}
-                      className="grid grid-cols-[minmax(5rem,6rem)_minmax(5.5rem,7rem)_minmax(9rem,1fr)_minmax(5.5rem,7rem)_minmax(4.5rem,5.5rem)_minmax(4.5rem,5.5rem)_minmax(5.5rem,1fr)] items-center gap-2 border-b border-zinc-800/50 px-4 py-3 text-sm transition last:border-0 hover:bg-white/[0.04] md:text-[0.9375rem]"
-                    >
-                      <span className="font-semibold text-zinc-100">{row.plate}</span>
-                      <span className="truncate text-zinc-300">{row.driverName ?? "—"}</span>
-                      <span className="truncate font-mono text-xs tabular-nums text-zinc-400">
+            {vehicleTableQ.isLoading ? (
+              <p className="px-4 py-8 text-center text-sm text-zinc-500">Loading fleet table…</p>
+            ) : tableRows.length === 0 ? (
+              <p className="px-4 py-8 text-center text-sm text-zinc-500">No vehicles in the fleet list.</p>
+            ) : (
+              <table className="w-full table-fixed text-left text-sm">
+                <colgroup>
+                  <col style={{ width: "16%" }} />
+                  <col style={{ width: "12%" }} />
+                  <col style={{ width: "20%" }} />
+                  <col style={{ width: "11%" }} />
+                  <col style={{ width: "11%" }} />
+                  <col style={{ width: "10%" }} />
+                  <col style={{ width: "20%" }} />
+                </colgroup>
+                <thead className="text-xs font-semibold uppercase tracking-wide text-zinc-500 md:text-sm">
+                  <tr>
+                    <th className="sticky top-0 z-10 border-b border-zinc-800 bg-[#12151a] px-4 py-3 text-left">
+                      Device number
+                    </th>
+                    <th className="sticky top-0 z-10 border-b border-zinc-800 bg-[#12151a] px-4 py-3 text-left">Driver</th>
+                    <th className="sticky top-0 z-10 border-b border-zinc-800 bg-[#12151a] px-4 py-3 text-left">Lat, Lng</th>
+                    <th className="sticky top-0 z-10 border-b border-zinc-800 bg-[#12151a] px-4 py-3 text-left">Status</th>
+                    <th className="sticky top-0 z-10 border-b border-zinc-800 bg-[#12151a] px-4 py-3 text-left">Speed</th>
+                    <th className="sticky top-0 z-10 border-b border-zinc-800 bg-[#12151a] px-4 py-3 text-left">Fuel</th>
+                    <th className="sticky top-0 z-10 border-b border-zinc-800 bg-[#12151a] px-4 py-3 text-left">Alarm</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tableRows.map((row) => (
+                    <tr key={row.vehicleId} className="hover:bg-white/[0.04]">
+                      <td className="border-b border-zinc-800/50 px-4 py-3">
+                        <Link
+                          href={`/vehicles/${encodeURIComponent(row.plate)}`}
+                          className="font-semibold text-sky-400 hover:underline"
+                        >
+                          {row.devIdno ?? row.plate}
+                        </Link>
+                      </td>
+                      <td className="border-b border-zinc-800/50 px-4 py-3 text-zinc-200">{row.driverName ?? "—"}</td>
+                      <td className="border-b border-zinc-800/50 px-4 py-3 tabular-nums text-zinc-200">
                         {formatLatLng(row.lat, row.lng)}
-                      </span>
-                      <span className="min-w-0">{pillForStatus(row.status)}</span>
-                      <span
-                        className={
-                          row.speedKmh != null && row.speedKmh > 90 ? "font-semibold text-red-400" : "text-zinc-200"
-                        }
+                      </td>
+                      <td className="border-b border-zinc-800/50 px-4 py-3">{pillForStatus(row.status)}</td>
+                      <td
+                        className={cn(
+                          "border-b border-zinc-800/50 px-4 py-3 tabular-nums",
+                          row.speedKmh != null && row.speedKmh > 90 ? "font-semibold text-red-400" : "text-zinc-200",
+                        )}
                       >
                         {row.speedKmh != null ? `${Math.round(row.speedKmh)} km/h` : "—"}
-                      </span>
-                      <span className="tabular-nums text-zinc-200">
+                      </td>
+                      <td className="border-b border-zinc-800/50 px-4 py-3 tabular-nums text-zinc-200">
                         {row.fuelVolumeL != null ? formatFuelLiters(row.fuelVolumeL) : "—"}
-                      </span>
-                      <span className="min-w-0 truncate">
+                      </td>
+                      <td className="border-b border-zinc-800/50 px-4 py-3">
                         {row.alarmMessage ? (
-                          alarmPill(row.alarmMessage, row.alarmSeverity)
+                          <span className="line-clamp-2">{alarmPill(row.alarmMessage, row.alarmSeverity)}</span>
                         ) : (
                           <Badge variant="info">—</Badge>
                         )}
-                      </span>
-                    </Link>
-                  ))
-                )}
-              </div>
-            </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       </section>
