@@ -131,6 +131,17 @@ model FleetReportCache {
 }
 
 // ---------------------------------------------------------------------------
+// Fleet vehicle display plates — user-edited license plates keyed by device id
+// ---------------------------------------------------------------------------
+
+model VehiclePlateOverride {
+  devIdno     String   @id @db.VarChar(64)
+  plateNumber String?  @db.VarChar(64)
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?  @db.VarChar(128)
+}
+
+// ---------------------------------------------------------------------------
 // DMS / ADAS camera recordings — synced from uctracking getVideoFileInfo
 // ---------------------------------------------------------------------------
 

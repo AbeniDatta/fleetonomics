@@ -2,12 +2,15 @@
 
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Fuel, Gauge, MapPin, Radio, User } from "lucide-react";
 import type { Position, Vehicle } from "@/lib/uctracking/schemas";
+import type { FuelPerVehicleRow } from "@/lib/uctracking/normalize-fleet-fuel-snapshot";
+import { vehicleDeviceKey } from "@/lib/vehicle-plates/keys";
 import { Button } from "@/components/ui/button";
 import { DataSourcePill } from "@/components/ui/data-source-pill";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 const FleetMapInner = dynamic(() => import("@/components/maps/fleet-map-inner").then((m) => m.FleetMapInner), {
@@ -18,6 +21,7 @@ const FleetMapInner = dynamic(() => import("@/components/maps/fleet-map-inner").
 type DetailResponse = {
   vehicle: Vehicle;
   gpsStatus?: { source: string; data: unknown } | null;
+  fuel?: FuelPerVehicleRow | null;
 };
 
 type LiveStatus = {
@@ -134,7 +138,11 @@ function buildStatusString(row: Record<string, unknown> | null, vehicle: Vehicle
   return parts.join(", ");
 }
 
-function extractLiveStatus(plate: string, vehicle: Vehicle, gpsStatus: DetailResponse["gpsStatus"]): LiveStatus {
+function extractLiveStatus(
+  vehicle: Vehicle,
+  gpsStatus: DetailResponse["gpsStatus"],
+  fuelRow: FuelPerVehicleRow | null | undefined,
+): LiveStatus {
   const row = pickFirstRow(gpsStatus?.data ?? null);
   const devIdno = row
     ? (row.devIdno ?? row.devIDNO ?? row.DevIDNO ?? row.deviceId ?? row.did)
@@ -143,7 +151,7 @@ function extractLiveStatus(plate: string, vehicle: Vehicle, gpsStatus: DetailRes
     ? (row.pn ?? row.team ?? row.fleet ?? row.companyName ?? row.orgName ?? row.depName)
     : null;
   const driver = row ? (row.driverName ?? row.driver ?? row.dn) : vehicle.driverName;
-  const speed = row ? toNum(row.sp ?? row.speed ?? row.speedKmh) : vehicle.speedKmh;
+  const speed = row ? toNum(row.sp ?? row.speed ?? row.speedKmh) : vehicle.speedKmh ?? fuelRow?.speedKmh ?? null;
   const heading = row ? toNum(row.c ?? row.course ?? row.heading) : vehicle.heading;
   const online = row ? toBool(row.ol ?? row.online ?? row.isOnline) : vehicle.status !== "offline";
   const gpsTime = row ? toIsoMaybe(row.tm ?? row.gpsTime ?? row.time) : vehicle.lastSeenAt;
@@ -163,17 +171,19 @@ function extractLiveStatus(plate: string, vehicle: Vehicle, gpsStatus: DetailRes
   const lat = normalizeCoord(latRaw);
   const lng = normalizeCoord(lngRaw);
   const fuelLiters = (() => {
-    if (!row) return null;
-    const yl = toNum(row.yl ?? row.YL ?? row.youLiang);
-    if (yl != null) return yl / 100;
-    const oilL = toNum(row.oilL ?? row.fuelL);
-    if (oilL != null) return oilL;
-    const oil = toNum(row.oil ?? row.fuel);
-    if (oil != null) {
-      if (oil > 500) return oil / 100;
-      if (oil <= 100) return null;
-      return oil;
+    if (row) {
+      const yl = toNum(row.yl ?? row.YL ?? row.youLiang);
+      if (yl != null) return yl / 100;
+      const oilL = toNum(row.oilL ?? row.fuelL);
+      if (oilL != null) return oilL;
+      const oil = toNum(row.oil ?? row.fuel);
+      if (oil != null) {
+        if (oil > 500) return oil / 100;
+        if (oil <= 100) return null;
+        return oil;
+      }
     }
+    if (fuelRow?.fuelVolumeL != null) return fuelRow.fuelVolumeL;
     return null;
   })();
   const mileageTodayKm = row
@@ -181,7 +191,7 @@ function extractLiveStatus(plate: string, vehicle: Vehicle, gpsStatus: DetailRes
     : null;
 
   return {
-    plate,
+    plate: vehicle.plate,
     devIdno: typeof devIdno === "string" ? devIdno : typeof devIdno === "number" ? String(devIdno) : vehicle.devIdno ?? null,
     teamName: typeof teamName === "string" ? teamName : typeof teamName === "number" ? String(teamName) : null,
     driver: typeof driver === "string" ? driver : typeof driver === "number" ? String(driver) : null,
@@ -242,6 +252,11 @@ function DetailSection({ title, icon: Icon, children }: { title: string; icon: t
 }
 
 export function VehicleDetail({ plate }: { plate: string }) {
+  const queryClient = useQueryClient();
+  const [plateDraft, setPlateDraft] = useState("");
+  const [plateSaveError, setPlateSaveError] = useState<string | null>(null);
+  const [plateSaving, setPlateSaving] = useState(false);
+
   const detailQ = useQuery({
     queryKey: ["vehicle", plate],
     queryFn: () => fetchDetail(plate),
@@ -256,16 +271,26 @@ export function VehicleDetail({ plate }: { plate: string }) {
   });
 
   const vehicle = detailQ.data?.vehicle;
+
+  useEffect(() => {
+    setPlateDraft(vehicle?.plateNumber?.trim() ?? "");
+  }, [vehicle?.plateNumber]);
+
   const live = useMemo(() => {
     if (!vehicle) return null;
-    return extractLiveStatus(vehicle.plate, vehicle, detailQ.data?.gpsStatus ?? null);
-  }, [vehicle, detailQ.data?.gpsStatus]);
+    return extractLiveStatus(vehicle, detailQ.data?.gpsStatus ?? null, detailQ.data?.fuel ?? null);
+  }, [vehicle, detailQ.data?.gpsStatus, detailQ.data?.fuel]);
 
   const mapPositions = useMemo(() => {
     const all = positionsQ.data ?? [];
     const p = plate.toLowerCase();
+    const dev = vehicle?.devIdno?.toLowerCase();
     const filtered = all.filter(
-      (pos) => pos.plate?.toLowerCase() === p || pos.vehicleId.toLowerCase() === p || pos.vehicleId === vehicle?.id,
+      (pos) =>
+        pos.plate?.toLowerCase() === p ||
+        pos.vehicleId.toLowerCase() === p ||
+        pos.vehicleId === vehicle?.id ||
+        (dev && (pos.plate?.toLowerCase() === dev || pos.vehicleId.toLowerCase() === dev)),
     );
     if (filtered.length > 0) return filtered;
     if (live?.lat != null && live?.lng != null && vehicle) {
@@ -286,10 +311,40 @@ export function VehicleDetail({ plate }: { plate: string }) {
   }, [positionsQ.data, plate, vehicle, live]);
 
   useEffect(() => {
-    if (vehicle?.plate) {
-      document.title = `${vehicle.plate} — Fleetonomics`;
+    if (vehicle) {
+      const title = vehicle.plateNumber?.trim() || vehicle.devIdno || vehicle.plate;
+      document.title = `${title} — Fleetonomics`;
     }
-  }, [vehicle?.plate]);
+  }, [vehicle]);
+
+  const savePlateNumber = async () => {
+    if (!vehicle) return;
+    setPlateSaving(true);
+    setPlateSaveError(null);
+    try {
+      const key = vehicleDeviceKey(vehicle);
+      const res = await fetch(`/api/fleet/vehicle-plates/${encodeURIComponent(key)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plateNumber: plateDraft.trim() || null }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? "save_failed");
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["vehicle", plate] }),
+        queryClient.invalidateQueries({ queryKey: ["fleet-vehicles"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-vehicle-table"] }),
+        queryClient.invalidateQueries({ queryKey: ["fuel-per-vehicle"] }),
+        queryClient.invalidateQueries({ queryKey: ["fleet-kpi"] }),
+      ]);
+    } catch {
+      setPlateSaveError("Could not save plate number. Try again.");
+    } finally {
+      setPlateSaving(false);
+    }
+  };
 
   if (detailQ.isLoading) {
     return <div className="text-base text-zinc-400">Loading vehicle…</div>;
@@ -334,9 +389,10 @@ export function VehicleDetail({ plate }: { plate: string }) {
       ? `${live.mileageTodayKm.toLocaleString(undefined, { maximumFractionDigits: 1 })} km`
       : "—";
 
-  const deviceDisplay = live.devIdno ?? "—";
+  const deviceDisplay = live.devIdno ?? vehicle.plate;
   const connectionLabel =
     live.online === false ? "Disconnected" : live.online === true ? "Connected" : "Unknown";
+  const displayTitle = vehicle.plateNumber?.trim() || deviceDisplay;
 
   return (
     <div className="space-y-4">
@@ -367,7 +423,7 @@ export function VehicleDetail({ plate }: { plate: string }) {
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Vehicle</p>
-                <h2 className="truncate text-lg font-semibold text-zinc-50">{vehicle.plate}</h2>
+                <h2 className="truncate text-lg font-semibold text-zinc-50">{displayTitle}</h2>
               </div>
               <span
                 className={cn(
@@ -381,6 +437,9 @@ export function VehicleDetail({ plate }: { plate: string }) {
             <p className="mt-2 font-mono text-xs text-zinc-500">
               Device <span className="text-zinc-300">{deviceDisplay}</span>
             </p>
+            {vehicle.alarmSummary ? (
+              <p className="mt-2 text-xs text-amber-200/90">{vehicle.alarmSummary}</p>
+            ) : null}
           </div>
 
           <div className="max-h-[min(60vh,560px)] overflow-y-auto lg:max-h-none lg:flex-1">
@@ -409,7 +468,33 @@ export function VehicleDetail({ plate }: { plate: string }) {
 
             <DetailSection title="Device" icon={Gauge}>
               <DetailRow label="Device number" value={deviceDisplay} mono />
-              <DetailRow label="Plate number" value={vehicle.plate} mono />
+              <div className="border-b border-zinc-800/80 py-3.5 last:border-0">
+                <dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">Plate number</dt>
+                <dd className="mt-2 space-y-2">
+                  <Input
+                    value={plateDraft}
+                    onChange={(e) => setPlateDraft(e.target.value)}
+                    placeholder="Enter plate number"
+                    className="bg-vms-card font-mono text-sm"
+                    maxLength={64}
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={plateSaving}
+                      onClick={() => void savePlateNumber()}
+                    >
+                      {plateSaving ? "Saving…" : "Save plate"}
+                    </Button>
+                    {plateSaveError ? <span className="text-xs text-red-400">{plateSaveError}</span> : null}
+                  </div>
+                  <p className="text-xs text-zinc-500">
+                    Saved plates appear in fleet tables across Dashboard, Vehicles, and Fuel.
+                  </p>
+                </dd>
+              </div>
+              <DetailRow label="Vendor vehicle ID" value={vehicle.plate} mono />
             </DetailSection>
           </div>
         </aside>

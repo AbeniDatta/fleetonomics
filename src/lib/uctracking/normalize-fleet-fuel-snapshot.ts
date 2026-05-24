@@ -5,6 +5,7 @@ export type FuelPerVehicleRow = {
   vehicleId: string;
   devIdno: string;
   plate: string;
+  plateNumber: string | null;
   fuelVolumeL: number | null;
   speedKmh: number | null;
 };
@@ -103,6 +104,7 @@ export function buildFuelPerVehicleRows(vehicles: Vehicle[], deviceStatusRows: u
       vehicleId: v.id,
       devIdno,
       plate: v.plate,
+      plateNumber: v.plateNumber?.trim() || null,
       fuelVolumeL,
       speedKmh,
     };

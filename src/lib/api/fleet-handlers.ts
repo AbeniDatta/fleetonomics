@@ -9,6 +9,7 @@ import {
   sumKmTodayFromStatusRows,
 } from "@/lib/dashboard/metrics";
 import { buildDashboardVehicleTableRows } from "@/lib/dashboard/vehicle-table-rows";
+import { applyVehiclePlateOverrides } from "@/lib/vehicle-plates/apply-overrides";
 import {
   buildFuelPerVehicleRows,
   fuelPerVehicleMetrics,
@@ -36,7 +37,19 @@ import {
   demoWorkOrders,
   hourlyFuelSeries,
 } from "@/lib/uctracking/demo-data";
-import { alarmSchema, positionSchema, vehicleSchema, type Position } from "@/lib/uctracking/schemas";
+import {
+  buildPlateLookup,
+  filterAlarmsByRole,
+  inferAlarmSource,
+  isVendorApiFailure,
+  mergeAlarms,
+  normalizeAlarmRow,
+  normalizeAlarmRows,
+  vendorDateTimeRange,
+  type PlateLookup,
+} from "@/lib/uctracking/normalize-safety-alarms";
+import type { Vehicle } from "@/lib/uctracking/schemas";
+import { alarmSchema, positionSchema, vehicleSchema, type Alarm, type Position } from "@/lib/uctracking/schemas";
 
 export async function getVehiclesPayload() {
   const cfg = getUctrackingConfigFromEnv();
@@ -134,14 +147,14 @@ export async function getVehiclesPayload() {
           lastSeenAt,
         });
       });
-      return { source: "uctracking" as const, data };
+      return { source: "uctracking" as const, data: await applyVehiclePlateOverrides(data) };
     } catch (e) {
       console.error("[fleet] uctracking vehicles failed, using demo", e);
     }
     // Important: if uctracking is configured but calls fail, do NOT pretend with demo data.
     return { source: "error" as const, data: [] as typeof demoVehicles };
   }
-  return { source: "demo" as const, data: demoVehicles };
+  return { source: "demo" as const, data: await applyVehiclePlateOverrides(demoVehicles) };
 }
 
 function toIsoFromUnknown(v: unknown): string {
@@ -218,88 +231,226 @@ export async function getPositionsPayload() {
   return { source: "demo" as const, data: demoPositions };
 }
 
+function mapFleetAlarmRows(rows: unknown[], lookup: PlateLookup): Alarm[] {
+  const out: Alarm[] = [];
+  for (const row of rows) {
+    const r = row as Record<string, unknown>;
+    const rawMsg = r.desc ?? r.message ?? r.info;
+    const msg =
+      typeof rawMsg === "string" && rawMsg.trim().length
+        ? rawMsg.trim()
+        : typeof rawMsg === "number"
+          ? `Alarm (${rawMsg})`
+          : `Alarm (${String(r.type ?? "unknown")})`;
+    const alarm = normalizeAlarmRow(row, lookup, { feed: "fleet" });
+    if (!alarm) continue;
+    out.push(
+      alarmSchema.parse({
+        ...alarm,
+        source: inferAlarmSource(r, msg),
+      }),
+    );
+  }
+  return out;
+}
+
 export async function getAlarmsPayload() {
   const cfg = getUctrackingConfigFromEnv();
   if (isUctrackingConfigured(cfg)) {
     try {
       const client = new UctrackingClient(cfg);
-      const isLikelyPlate = (v: unknown): v is string => {
-        if (typeof v !== "string") return false;
-        const s = v.trim();
-        if (s.length < 2 || s.length > 20) return false;
-        // Avoid tokens / hashes being rendered as plates
-        if (/^[0-9a-f]{24,}$/i.test(s)) return false;
-        // Typical plates: "NL-0847", "ABC123", etc.
-        return /^[a-z0-9][a-z0-9-]*[a-z0-9]$/i.test(s);
-      };
-
-      // Best-effort plate mapping (alarms often reference devIdno/devIDNO, not vehicleNo)
       const vehicleRows = await client.listVehicles().catch(() => [] as unknown[]);
-      const plateByDev = new Map<string, string>();
-      const plateByVehId = new Map<string, string>();
-      for (const row of vehicleRows) {
-        const r = row as Record<string, unknown>;
-        const plate = (r.nm ?? r.plate ?? r.vehicleNo ?? r.name) as unknown;
-        const plateStr = isLikelyPlate(plate) ? plate.trim() : null;
-        if (!plateStr) continue;
-        const devIdno = extractDevIdno(r);
-        const vehId =
-          typeof r.id === "string" && r.id.trim().length > 0
-            ? r.id.trim()
-            : typeof r.vehicleId === "string" && r.vehicleId.trim().length > 0
-              ? r.vehicleId.trim()
-              : null;
-        if (devIdno) plateByDev.set(devIdno, plateStr);
-        if (vehId) plateByVehId.set(vehId, plateStr);
-      }
-
+      const lookup = buildPlateLookup(vehicleRows);
       const rows = await client.listAlarms();
-      const data = rows
-        .map((row) => {
-          const r = row as Record<string, unknown>;
-          const id = String(r.guid ?? r.id ?? `${r.devIDNO ?? "dev"}-${r.type ?? "t"}-${r.time ?? Date.now()}`);
-          const devIdnoRaw = r.devIdno ?? r.devIDNO ?? r.DevIDNO ?? r.deviceId;
-          const devIdno =
-            typeof devIdnoRaw === "string" && devIdnoRaw.trim().length > 0
-              ? devIdnoRaw.trim()
-              : typeof devIdnoRaw === "number" && Number.isFinite(devIdnoRaw)
-                ? String(devIdnoRaw)
-                : undefined;
-          const plateCandidate = (r.vehicleNo as unknown) ?? (r.vi as unknown) ?? (r.nm as unknown);
-          const plate =
-            (isLikelyPlate(plateCandidate) ? String(plateCandidate).trim() : undefined) ??
-            (devIdno ? plateByDev.get(devIdno) : undefined) ??
-            plateByVehId.get(String(r.vehIdno ?? r.vehId ?? r.vid ?? r.vehicleId ?? "")) ??
-            undefined;
-          const rawMsg = r.desc ?? r.message ?? r.info;
-          const msg =
-            typeof rawMsg === "string" && rawMsg.trim().length
-              ? rawMsg
-              : typeof rawMsg === "number"
-                ? `Alarm (${rawMsg})`
-                : `Alarm (${String(r.type ?? "unknown")})`;
-          const typeNum = typeof r.type === "number" ? r.type : undefined;
-          const severity = typeNum != null && typeNum > 0 ? "high" : "medium";
-          return alarmSchema.parse({
-            id,
-            vehicleId: String(r.devIDNO ?? r.vid ?? r.vehicleId ?? r.id ?? plate ?? "unknown"),
-            plate,
-            type: String(r.type ?? "alarm"),
-            message: msg,
-            severity,
-            source: "GPS",
-            raisedAt: toIsoFromUnknown(r.time ?? r.tm ?? r.gpsTime ?? Date.now()),
-            acknowledged: typeof r.hd === "number" ? r.hd === 1 : undefined,
-          });
-        })
-        .filter(Boolean);
-      if (data.length) return { source: "uctracking" as const, data };
+      const data = mapFleetAlarmRows(rows, lookup);
+      return { source: "uctracking" as const, data };
     } catch (e) {
       console.error("[fleet] uctracking alarms failed, using demo", e);
     }
     return { source: "error" as const, data: [] as typeof demoAlarms };
   }
   return { source: "demo" as const, data: demoAlarms };
+}
+
+export type SafetyAlarmsPayload = {
+  source: string;
+  role: "ADAS" | "DMS" | "all";
+  hours: number;
+  data: Alarm[];
+  feeds: {
+    fleet: number;
+    safetyQuery: number;
+    alarmPage: number;
+    identify: number;
+    evidence: number;
+  };
+};
+
+async function fetchAlarmPagePerVehicle(
+  client: UctrackingClient,
+  cfg: ReturnType<typeof getUctrackingConfigFromEnv>,
+  vehicles: Vehicle[],
+  lookup: PlateLookup,
+  beginTime: string,
+  endTime: string,
+): Promise<Alarm[]> {
+  const out: Alarm[] = [];
+  const slice = vehicles.slice(0, 16);
+  await Promise.all(
+    slice.map(async (v) => {
+      const devIdno = v.devIdno?.trim() || v.plate;
+      if (!devIdno) return;
+      try {
+        const raw = await client.getJson(cfg.paths.alarmsPage, {
+          devIdno,
+          vehicleNo: v.plate,
+          beginTime,
+          endTime,
+          currentPage: 1,
+          pageRecords: 100,
+          handle: 0,
+          toMap: 2,
+        });
+        if (isVendorApiFailure(raw)) return;
+        out.push(...normalizeAlarmRows(raw, lookup, { feed: "page" }));
+      } catch {
+        // per-vehicle best effort
+      }
+    }),
+  );
+  return out;
+}
+
+async function fetchSafetyQueryPerVehicle(
+  client: UctrackingClient,
+  cfg: ReturnType<typeof getUctrackingConfigFromEnv>,
+  vehicles: Vehicle[],
+  lookup: PlateLookup,
+  beginTime: string,
+  endTime: string,
+): Promise<Alarm[]> {
+  const out: Alarm[] = [];
+  const slice = vehicles.slice(0, 16);
+  await Promise.all(
+    slice.map(async (v) => {
+      const devIdno = v.devIdno?.trim() || v.plate;
+      if (!devIdno) return;
+      try {
+        const raw = await client.getJson(cfg.paths.safetyAlarmQuery, {
+          devIdno,
+          vehicleNo: v.plate,
+          beginTime,
+          endTime,
+          currentPage: 1,
+          pageRecords: 100,
+          toMap: 2,
+        });
+        if (isVendorApiFailure(raw)) return;
+        out.push(...normalizeAlarmRows(raw, lookup, { feed: "safety" }));
+      } catch {
+        // per-vehicle best effort
+      }
+    }),
+  );
+  return out;
+}
+
+export async function getSafetyAlarmsPayload(opts?: {
+  role?: "ADAS" | "DMS" | "all";
+  hours?: number;
+}): Promise<SafetyAlarmsPayload> {
+  const role = opts?.role ?? "all";
+  const hours = opts?.hours ?? 24;
+  const cfg = getUctrackingConfigFromEnv();
+
+  if (!isUctrackingConfigured(cfg)) {
+    const data = filterAlarmsByRole(demoAlarms, role);
+    return {
+      source: "demo",
+      role,
+      hours,
+      data,
+      feeds: { fleet: data.length, safetyQuery: 0, alarmPage: 0, identify: 0, evidence: 0 },
+    };
+  }
+
+  try {
+    const client = new UctrackingClient(cfg);
+    const { beginTime, endTime } = vendorDateTimeRange(hours);
+    const vehiclesRes = await getVehiclesPayload();
+    const vehicles = vehiclesRes.data;
+    const lookup = buildPlateLookup(
+      (await client.listVehicles().catch(() => [])) as unknown[],
+    );
+
+    const queryBase = {
+      beginTime,
+      endTime,
+      currentPage: 1,
+      pageRecords: 200,
+      handle: 0,
+      toMap: 2,
+    };
+
+    const [fleetRows, safetyRaw, pageRaw, identifyRaw, evidenceRaw, pagePerVehicle, safetyPerVehicle] =
+      await Promise.all([
+        client.listAlarms().catch(() => [] as unknown[]),
+        client.getJson(cfg.paths.safetyAlarmQuery, queryBase).catch(() => null),
+        client.getJson(cfg.paths.alarmsPage, queryBase).catch(() => null),
+        client.getJson(cfg.paths.queryIdentifyAlarm, queryBase).catch(() => null),
+        client.getJson(cfg.paths.safetyEvidenceList, queryBase).catch(() => null),
+        fetchAlarmPagePerVehicle(client, cfg, vehicles, lookup, beginTime, endTime),
+        fetchSafetyQueryPerVehicle(client, cfg, vehicles, lookup, beginTime, endTime),
+      ]);
+
+    const fleetAlarms = mapFleetAlarmRows(fleetRows, lookup);
+    const safetyAlarms = [
+      ...normalizeAlarmRows(safetyRaw, lookup, { feed: "safety" }),
+      ...safetyPerVehicle,
+    ];
+    const pageAlarms = [
+      ...normalizeAlarmRows(pageRaw, lookup, { feed: "page" }),
+      ...pagePerVehicle,
+    ];
+    const identifyAlarms = normalizeAlarmRows(identifyRaw, lookup, {
+      defaultSource: "DMS",
+      feed: "identify",
+    });
+    const evidenceAlarms = normalizeAlarmRows(evidenceRaw, lookup, { feed: "evidence" });
+
+    const merged = mergeAlarms([
+      ...fleetAlarms,
+      ...safetyAlarms,
+      ...pageAlarms,
+      ...identifyAlarms,
+      ...evidenceAlarms,
+    ]);
+    const data = filterAlarmsByRole(merged, role);
+
+    return {
+      source: "uctracking",
+      role,
+      hours,
+      data,
+      feeds: {
+        fleet: fleetAlarms.length,
+        safetyQuery: safetyAlarms.length,
+        alarmPage: pageAlarms.length,
+        identify: identifyAlarms.length,
+        evidence: evidenceAlarms.length,
+      },
+    };
+  } catch (e) {
+    console.error("[fleet] getSafetyAlarmsPayload failed", e);
+    const data = filterAlarmsByRole(demoAlarms, role);
+    return {
+      source: "error",
+      role,
+      hours,
+      data,
+      feeds: { fleet: 0, safetyQuery: 0, alarmPage: 0, identify: 0, evidence: 0 },
+    };
+  }
 }
 
 export async function getTrackPayload(opts: { devIdno?: string; vehicleNo?: string; beginTime: string; endTime: string }) {
@@ -345,7 +496,8 @@ export async function getAlarmPagePayload(opts: {
         currentPage: opts.currentPage ?? 1,
         pageRecords: opts.pageRecords ?? 20,
         armType: opts.armType,
-        handle: opts.handle,
+        handle: opts.handle ?? 0,
+        toMap: 2,
       });
       return { source: "uctracking" as const, data: raw };
     } catch (e) {

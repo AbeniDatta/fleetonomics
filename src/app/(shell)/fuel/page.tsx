@@ -15,6 +15,7 @@ import {
   fuelPerVehicleMetrics,
   type FuelPerVehicleRow,
 } from "@/lib/uctracking/normalize-fleet-fuel-snapshot";
+import { formatPlateNumberCell } from "@/lib/vehicle-plates/keys";
 
 type ReportTab =
   | "summary"
@@ -307,6 +308,7 @@ export default function FuelPage() {
               <thead className="text-xs font-semibold uppercase tracking-wide text-zinc-500 md:text-sm">
                 <tr>
                   <th className="border-b border-vms-border py-3 pr-4">Device number</th>
+                  <th className="border-b border-vms-border py-3 pr-4">Plate number</th>
                   <th className="border-b border-vms-border py-3 pr-4">Fuel volume</th>
                   <th className="border-b border-vms-border py-3">Current speed</th>
                 </tr>
@@ -321,6 +323,9 @@ export default function FuelPage() {
                       >
                         {r.devIdno}
                       </Link>
+                    </td>
+                    <td className="border-b border-vms-border py-3 pr-4 text-zinc-200">
+                      {formatPlateNumberCell(r.plateNumber)}
                     </td>
                     <td className="border-b border-vms-border py-3 pr-4 tabular-nums text-zinc-200">
                       {formatFuelLiters(r.fuelVolumeL)}

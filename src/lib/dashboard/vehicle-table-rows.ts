@@ -5,6 +5,7 @@ export type DashboardVehicleTableRow = {
   vehicleId: string;
   plate: string;
   devIdno: string | null;
+  plateNumber: string | null;
   driverName: string | null;
   lat: number | null;
   lng: number | null;
@@ -72,6 +73,7 @@ export function buildDashboardVehicleTableRows(
       vehicleId: v.id,
       plate: v.plate,
       devIdno: v.devIdno?.trim() || null,
+      plateNumber: v.plateNumber?.trim() || null,
       driverName: v.driverName ?? null,
       lat,
       lng,

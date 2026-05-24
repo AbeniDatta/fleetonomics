@@ -12,6 +12,7 @@ import {
   formatLatLng,
   type DashboardVehicleTableRow,
 } from "@/lib/dashboard/vehicle-table-rows";
+import { formatPlateNumberCell } from "@/lib/vehicle-plates/keys";
 import { Badge } from "@/components/ui/badge";
 import { VmsPageHero } from "@/components/vms/vms-page-blocks";
 import { cn } from "@/lib/utils";
@@ -314,18 +315,22 @@ export function DashboardView() {
             ) : (
               <table className="w-full table-fixed text-left text-sm">
                 <colgroup>
-                  <col style={{ width: "16%" }} />
-                  <col style={{ width: "12%" }} />
-                  <col style={{ width: "20%" }} />
-                  <col style={{ width: "11%" }} />
-                  <col style={{ width: "11%" }} />
+                  <col style={{ width: "14%" }} />
                   <col style={{ width: "10%" }} />
-                  <col style={{ width: "20%" }} />
+                  <col style={{ width: "10%" }} />
+                  <col style={{ width: "16%" }} />
+                  <col style={{ width: "9%" }} />
+                  <col style={{ width: "9%" }} />
+                  <col style={{ width: "8%" }} />
+                  <col style={{ width: "24%" }} />
                 </colgroup>
                 <thead className="text-xs font-semibold uppercase tracking-wide text-zinc-500 md:text-sm">
                   <tr>
                     <th className="sticky top-0 z-10 border-b border-zinc-800 bg-[#12151a] px-4 py-3 text-left">
                       Device number
+                    </th>
+                    <th className="sticky top-0 z-10 border-b border-zinc-800 bg-[#12151a] px-4 py-3 text-left">
+                      Plate number
                     </th>
                     <th className="sticky top-0 z-10 border-b border-zinc-800 bg-[#12151a] px-4 py-3 text-left">Driver</th>
                     <th className="sticky top-0 z-10 border-b border-zinc-800 bg-[#12151a] px-4 py-3 text-left">Lat, Lng</th>
@@ -345,6 +350,9 @@ export function DashboardView() {
                         >
                           {row.devIdno ?? row.plate}
                         </Link>
+                      </td>
+                      <td className="border-b border-zinc-800/50 px-4 py-3 text-zinc-200">
+                        {formatPlateNumberCell(row.plateNumber)}
                       </td>
                       <td className="border-b border-zinc-800/50 px-4 py-3 text-zinc-200">{row.driverName ?? "—"}</td>
                       <td className="border-b border-zinc-800/50 px-4 py-3 tabular-nums text-zinc-200">

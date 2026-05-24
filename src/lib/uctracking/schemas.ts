@@ -55,6 +55,8 @@ export const vehicleSchema = z.object({
   plate: z.string(),
   /** Device id from uctracking (e.g. Get User Vehicle / Get DevIdno); required for live HLS and many video APIs. */
   devIdno: z.string().nullable().optional(),
+  /** User-edited license plate (Fleetonomics); empty in API means none set. */
+  plateNumber: z.string().nullable().optional(),
   driverId: z.string().nullable().optional(),
   driverName: z.string().nullable().optional(),
   type: z.string().optional(),

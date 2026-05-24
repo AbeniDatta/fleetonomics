@@ -68,7 +68,7 @@ export function VmsShell({ children }: { children: React.ReactNode }) {
 
             <Link
               href="/dashboard"
-              className="flex min-w-0 items-center rounded-lg outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-nlng-cyan/50"
+              className="flex min-w-0 items-center gap-2.5 rounded-lg outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-nlng-cyan/50 sm:gap-3"
               aria-label="Fleetonomics — Smart Fleet Management"
             >
               <div
@@ -80,12 +80,17 @@ export function VmsShell({ children }: { children: React.ReactNode }) {
               >
                 <Image
                   src="/brand/fleetonomics.png"
-                  alt="Fleetonomics — Smart Fleet Management"
+                  alt=""
                   priority
                   width={222}
                   height={52}
                   className="h-7 w-auto max-w-[min(11rem,36vw)] object-contain object-left sm:h-8 sm:max-w-[12.5rem]"
                 />
+              </div>
+              <div className="min-w-0 leading-tight">
+                <div className="text-sm font-semibold tracking-tight text-[var(--nlng-header-text)] sm:text-[0.9375rem]">
+                  Fleetonomics
+                </div>
               </div>
             </Link>
           </div>

@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
-import { getVehiclesPayload } from "@/lib/api/fleet-handlers";
-import { getDeviceStatusGpsPayload } from "@/lib/api/fleet-handlers";
+import {
+  getDeviceStatusGpsPayload,
+  getFuelPerVehiclePayload,
+  getVehiclesPayload,
+} from "@/lib/api/fleet-handlers";
+import { findVehicleByRouteKey } from "@/lib/vehicle-plates/keys";
 
 type Ctx = { params: Promise<{ plate: string }> };
 
@@ -8,18 +12,37 @@ export async function GET(_req: Request, ctx: Ctx) {
   const { plate } = await ctx.params;
   const decoded = decodeURIComponent(plate);
   const { data } = await getVehiclesPayload();
-  const vehicle = data.find((v) => v.plate.toLowerCase() === decoded.toLowerCase());
+  const vehicle = findVehicleByRouteKey(data, decoded);
   if (!vehicle) {
     return NextResponse.json({ error: "Vehicle not found" }, { status: 404 });
   }
 
-  // Best-effort: enrich with the "Device Status(GPS)" endpoint if it returns data for this vehicle.
-  // This is real uctracking data; OBD/TPMS are not available from the screenshots provided so far.
-  const gpsStatus = await getDeviceStatusGpsPayload({ vehicleNo: vehicle.plate, geoaddress: 1, driver: 1, toMap: 2 });
+  const devIdno = vehicle.devIdno?.trim() || vehicle.plate;
+
+  const [gpsStatus, fuelRes] = await Promise.all([
+    getDeviceStatusGpsPayload({
+      devIdno,
+      vehicleNo: vehicle.plate,
+      geoaddress: 1,
+      driver: 1,
+      toMap: 2,
+    }),
+    getFuelPerVehiclePayload(),
+  ]);
+
+  const fuelRow =
+    fuelRes.vehicles.find(
+      (r) =>
+        r.vehicleId === vehicle.id ||
+        r.plate === vehicle.plate ||
+        r.devIdno === devIdno ||
+        (vehicle.plateNumber && r.plate === vehicle.plate),
+    ) ?? null;
 
   return NextResponse.json({
     vehicle,
     gpsStatus,
+    fuel: fuelRow,
     obd: null,
     tpms: [],
     trips: [],

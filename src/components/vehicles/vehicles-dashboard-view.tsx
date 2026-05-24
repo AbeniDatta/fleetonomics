@@ -30,6 +30,7 @@ import {
   type FuelPerVehicleRow,
 } from "@/lib/uctracking/normalize-fleet-fuel-snapshot";
 import { formatLatLng } from "@/lib/dashboard/vehicle-table-rows";
+import { formatPlateNumberCell } from "@/lib/vehicle-plates/keys";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { VmsBackBar, VmsPageHero, VmsStatCard } from "@/components/vms/vms-page-blocks";
@@ -432,6 +433,7 @@ export function VehiclesDashboardView() {
               <thead className="text-xs font-semibold uppercase tracking-wide text-zinc-500 md:text-sm">
                 <tr>
                   <th className="border-b border-vms-border py-3 pr-4">Device number</th>
+                  <th className="border-b border-vms-border py-3 pr-4">Plate number</th>
                   <th className="border-b border-vms-border py-3 pr-4">Driver</th>
                   <th className="border-b border-vms-border py-3 pr-4">Location</th>
                   <th className="border-b border-vms-border py-3 pr-4">Speed</th>
@@ -461,6 +463,9 @@ export function VehiclesDashboardView() {
                         >
                           {deviceId}
                         </Link>
+                      </td>
+                      <td className="border-b border-vms-border py-3 pr-4 text-zinc-200">
+                        {formatPlateNumberCell(v.plateNumber)}
                       </td>
                       <td className="border-b border-vms-border py-3 pr-4 text-zinc-200">{v.driverName ?? "—"}</td>
                       <td className="max-w-[12rem] border-b border-vms-border py-3 pr-4 tabular-nums text-zinc-200">

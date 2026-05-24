@@ -189,6 +189,26 @@ export const demoAlarms: Alarm[] = [
     source: "DMS",
     raisedAt: new Date(Date.now() - 840_000).toISOString(),
   },
+  {
+    id: "a5",
+    vehicleId: "v1",
+    plate: "NL-0847",
+    type: "forward_collision",
+    message: "Forward collision warning",
+    severity: "high",
+    source: "ADAS",
+    raisedAt: new Date(Date.now() - 420_000).toISOString(),
+  },
+  {
+    id: "a6",
+    vehicleId: "v2",
+    plate: "NL-1203",
+    type: "lane_departure",
+    message: "Lane departure — left",
+    severity: "medium",
+    source: "ADAS",
+    raisedAt: new Date(Date.now() - 900_000).toISOString(),
+  },
 ];
 
 export const demoPositions: Position[] = demoVehicles

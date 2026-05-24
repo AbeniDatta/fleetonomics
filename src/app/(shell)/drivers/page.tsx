@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { useDeferredValue, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, BookOpen, GraduationCap, Users, Wifi } from "lucide-react";
+import { AlertTriangle, BookOpen, GraduationCap, Shield, Users, Wifi } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { CameraFeedsPanel } from "@/components/camera/camera-feeds-panel";
+import { SafetyAlarmsPanel } from "@/components/safety/safety-alarms-panel";
 import { VmsBackBar, VmsPageHero, VmsStatCard } from "@/components/vms/vms-page-blocks";
+import type { SafetyAlarmsPayload } from "@/lib/api/fleet-handlers";
 import { fatigueHeatGrid } from "@/lib/fatigue-grid";
 import type { BreathLog } from "@/lib/uctracking/schemas";
 import type { DriverListRow } from "@/lib/uctracking/normalize-driver-list";
@@ -38,6 +40,12 @@ async function fetchRoster(dName: string): Promise<RosterResponse> {
 async function fetchMockPanels(): Promise<{ source: string; data: MockPanelPayload }> {
   const res = await fetch("/api/fleet/drivers");
   if (!res.ok) throw new Error("drivers-mock");
+  return res.json();
+}
+
+async function fetchDmsAlarms(): Promise<SafetyAlarmsPayload> {
+  const res = await fetch("/api/fleet/safety/alarms?role=DMS&hours=24");
+  if (!res.ok) throw new Error("dms-alarms");
   return res.json();
 }
 
@@ -76,6 +84,12 @@ export default function DriversPage() {
     staleTime: 60_000,
   });
 
+  const dmsAlarmsQ = useQuery({
+    queryKey: ["safety-alarms", "DMS", 24],
+    queryFn: fetchDmsAlarms,
+    refetchInterval: 20_000,
+  });
+
   const source = rosterQ.data?.source;
   const isReal = source === "uctracking";
   const rows = useMemo(() => rosterQ.data?.drivers ?? [], [rosterQ.data]);
@@ -102,12 +116,13 @@ export default function DriversPage() {
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const mockPanel = mockPanelsQ.data?.data;
 
-  const mockKpi = {
-    onlineOnShift: 834,
-    hosViolations: 12,
-    docsExpiring: 38,
-    trainingDue: 24,
-  };
+  const dmsAlarms = dmsAlarmsQ.data?.data ?? [];
+  const dmsStats = useMemo(() => {
+    const high = dmsAlarms.filter((a) => a.severity === "critical" || a.severity === "high").length;
+    const open = dmsAlarms.filter((a) => a.acknowledged !== true).length;
+    const withVehicle = rows.filter((r) => r.vehiclePlate).length;
+    return { high, open, total: dmsAlarms.length, withVehicle };
+  }, [dmsAlarms, rows]);
 
   function exportCsv() {
     const header = [
@@ -169,40 +184,51 @@ export default function DriversPage() {
           icon={Users}
         />
         <VmsStatCard
-          label="Online / on shift"
-          value={mockKpi.onlineOnShift.toLocaleString()}
-          sub="Synthetic operations KPI"
-          trend="Placeholder until telematics shift state exists"
+          label="DMS events (24h)"
+          value={dmsStats.total}
+          sub="In-cab monitoring alarms"
+          trend={dmsAlarmsQ.isFetching ? "Refreshing…" : "querySafetyAlarm + identify"}
+          trendTone="neutral"
+          icon={AlertTriangle}
+        />
+        <VmsStatCard
+          label="High priority DMS"
+          value={dmsStats.high}
+          sub="Critical + high severity"
+          trend={dmsStats.high > 0 ? "Review camera evidence" : "No critical/high in feed"}
+          trendTone={dmsStats.high > 0 ? "bad" : "good"}
+          icon={Shield}
+        />
+        <VmsStatCard
+          label="Drivers with vehicle"
+          value={dmsStats.withVehicle}
+          sub={`of ${totalFleet.toLocaleString()} in roster`}
+          trend="From queryDriverList assignment"
           trendTone="neutral"
           icon={Wifi}
         />
         <VmsStatCard
-          label="HOS violations"
-          value={mockKpi.hosViolations}
-          sub="Mock compliance counter"
-          trend="Not returned by queryDriverList yet"
-          trendTone="bad"
-          icon={AlertTriangle}
-        />
-        <VmsStatCard
-          label="Training due"
-          value={mockKpi.trainingDue}
-          sub="Mock L&D queue"
-          trend="Docs expiring (mock): 38"
-          trendTone="neutral"
+          label="Open DMS alarms"
+          value={dmsStats.open}
+          sub="Unacknowledged in 24h window"
+          trend={dmsAlarmsQ.data?.feeds ? `Identify feed: ${dmsAlarmsQ.data.feeds.identify}` : "Live feeds"}
+          trendTone={dmsStats.open > 0 ? "bad" : "neutral"}
           icon={GraduationCap}
         />
       </div>
 
+      <SafetyAlarmsPanel
+        role="DMS"
+        title="DMS active alarms"
+        description="Fatigue, distraction, and driver-identification events from uctracking safety and identify-alarm APIs."
+        limit={80}
+      />
+
       <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 md:px-5 md:py-4">
         <BookOpen className="mt-0.5 h-5 w-5 shrink-0 text-nlng-amber" />
         <p className="text-sm text-amber-100/90">
-          Breathalyzer and fatigue widgets at the bottom of this page are <strong className="text-amber-50">mock data</strong>.
-          Punch card and identify-alarm tools live under{" "}
-          <Link href="/settings" className="font-medium text-sky-400 underline hover:text-sky-300">
-            Settings → API tools
-          </Link>
-          .
+          Breathalyzer and fatigue heatmap below are <strong className="text-amber-50">mock data</strong> until those
+          endpoints are wired. Live DMS alarms and camera recordings use uctracking above.
         </p>
       </div>
 
