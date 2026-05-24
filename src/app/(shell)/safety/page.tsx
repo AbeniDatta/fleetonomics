@@ -5,7 +5,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Activity, AlertTriangle, MapPin, Radar, Shield } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DataSourcePill } from "@/components/ui/data-source-pill";
 import { CameraFeedsPanel } from "@/components/camera/camera-feeds-panel";
 import { VmsBackBar, VmsPageHero, VmsStatCard } from "@/components/vms/vms-page-blocks";
 import type { Alarm } from "@/lib/uctracking/schemas";
@@ -49,32 +48,15 @@ export default function SafetyPage() {
 
   return (
     <div className="space-y-6 md:space-y-8">
-      <VmsBackBar
-        right={
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 text-xs text-zinc-500 md:text-sm">
-              <span>Alarms</span>
-              <DataSourcePill source={alarmsQ.data?.source} />
-            </div>
-            <div className="flex items-center gap-2 text-xs text-zinc-500 md:text-sm">
-              <span>Geofence</span>
-              <DataSourcePill source={geoEventsQ.data?.source} />
-            </div>
-          </div>
-        }
-      />
+      <VmsBackBar />
 
       <VmsPageHero
         icon={Radar}
-        title="Advanced Driver Assistance System (ADAS)"
-        description="Live uctracking alarms, ADAS camera feeds (camera 2), stored recordings, and geofence crossings."
+        title="ADAS"
+        description="Forward road cameras, active safety alarms, and geofence crossing history."
       />
 
-      <CameraFeedsPanel
-        role="ADAS"
-        title="ADAS live camera feeds"
-        description="Forward road / ADAS camera (channel 2) per vehicle. Same uctracking video APIs as DMS with a different channel index."
-      />
+      <CameraFeedsPanel role="ADAS" title="ADAS live camera feeds" />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 md:gap-5">
         <VmsStatCard
@@ -124,13 +106,7 @@ export default function SafetyPage() {
       <div className="grid gap-4 md:grid-cols-2 md:gap-5">
         <Card>
           <CardHeader>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <CardTitle>Active alarms</CardTitle>
-                <p className="mt-1 text-sm text-zinc-400">Normalized uctracking vehicle alarm stream.</p>
-              </div>
-              <DataSourcePill source={alarmsQ.data?.source} />
-            </div>
+            <CardTitle>Active alarms</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             {alarms.length === 0 ? (
@@ -157,13 +133,7 @@ export default function SafetyPage() {
 
         <Card>
           <CardHeader>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <CardTitle>Geofence events (24h)</CardTitle>
-                <p className="mt-1 text-sm text-zinc-400">Cross and exit events for saved zones.</p>
-              </div>
-              <DataSourcePill source={geoEventsQ.data?.source} />
-            </div>
+            <CardTitle>Geofence events (24h)</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             {geoEvents.length === 0 ? (

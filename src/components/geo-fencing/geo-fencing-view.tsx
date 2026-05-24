@@ -236,8 +236,8 @@ export function GeoFencingView() {
 
       <VmsPageHero
         icon={Shield}
-        title="Geo Fencing Dashboard"
-        description="Monitor vehicle locations, draw zones on the map, and track compliance."
+        title="Geo Fencing"
+        description="Draw zones on the map, monitor entries and exits, and review breach history."
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 md:gap-5">

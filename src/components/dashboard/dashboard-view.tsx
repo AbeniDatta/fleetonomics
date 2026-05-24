@@ -4,7 +4,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Bell, Bus, Droplets, Gauge, MapPin, Route, TableProperties } from "lucide-react";
+import { ArrowRight, Bell, Bus, Droplets, Gauge, LayoutDashboard, MapPin, Route, TableProperties } from "lucide-react";
 import { Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { Alarm, DashboardKpi, Vehicle } from "@/lib/uctracking/schemas";
 import { fuelPerVehicleMetrics, type FuelPerVehicleRow } from "@/lib/uctracking/normalize-fleet-fuel-snapshot";
@@ -13,6 +13,7 @@ import {
   type DashboardVehicleTableRow,
 } from "@/lib/dashboard/vehicle-table-rows";
 import { Badge } from "@/components/ui/badge";
+import { VmsPageHero } from "@/components/vms/vms-page-blocks";
 import { cn } from "@/lib/utils";
 
 const DashboardFleetMap = dynamic(
@@ -225,9 +226,11 @@ export function DashboardView() {
 
   return (
     <div className="space-y-8 md:space-y-10">
-      <header>
-        <h1 className="vms-page-title text-[1.25rem] md:text-[1.375rem]">Dashboard overview</h1>
-      </header>
+      <VmsPageHero
+        icon={LayoutDashboard}
+        title="Dashboard"
+        description="Fleet-wide view of live map, vehicles, fuel levels, distance today, and status."
+      />
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricHeroCard

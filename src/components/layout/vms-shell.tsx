@@ -3,7 +3,6 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
 import { signOut, useSession } from "next-auth/react";
 import { mainNav } from "@/config/nav";
 import { cn } from "@/lib/utils";
@@ -13,21 +12,6 @@ import { Button } from "@/components/ui/button";
 export function VmsShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { data } = useSession();
-  const [quickOpen, setQuickOpen] = useState(false);
-  const quickRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    function onDocDown(e: MouseEvent) {
-      const el = quickRef.current;
-      if (!el) return;
-      if (e.target instanceof Node && el.contains(e.target)) return;
-      setQuickOpen(false);
-    }
-    if (!quickOpen) return;
-    document.addEventListener("mousedown", onDocDown);
-    return () => document.removeEventListener("mousedown", onDocDown);
-  }, [quickOpen]);
-
   return (
     <div className="flex min-h-screen flex-col bg-vms-canvas font-sans text-zinc-200">
       <header
@@ -93,73 +77,6 @@ export function VmsShell({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="relative flex flex-wrap items-center gap-2.5 text-sm md:gap-3">
-            <div className="relative" ref={quickRef}>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="border-[var(--nlng-header-border)] bg-[var(--nlng-header-surface)] text-[var(--nlng-header-text)] shadow-sm hover:border-nlng-cyan/30 hover:bg-[#e8eef4]"
-                aria-haspopup="menu"
-                aria-expanded={quickOpen}
-                onClick={() => setQuickOpen((v) => !v)}
-              >
-                Quick actions ▾
-              </Button>
-              {quickOpen ? (
-                <div
-                  role="menu"
-                  className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border shadow-xl shadow-nlng-navy/10"
-                  style={{
-                    borderColor: "var(--nlng-header-border)",
-                    backgroundColor: "var(--nlng-header-surface)",
-                  }}
-                >
-                  <div className="bg-gradient-to-r from-nlng-green/10 via-nlng-lime/10 to-nlng-cyan/10 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--nlng-header-text)]/70">
-                    Create
-                  </div>
-                  <div className="px-2 pb-2 pt-1">
-                    {[
-                      { href: "/drivers", label: "Add driver" },
-                      { href: "/vehicles", label: "Add vehicle" },
-                      { href: "/geo-fencing#live-fleet-map", label: "Create geofence" },
-                      { href: "/geo-fencing#live-fleet-map", label: "Add map marker" },
-                    ].map((a) => (
-                      <Link
-                        key={a.label}
-                        href={a.href}
-                        role="menuitem"
-                        onClick={() => setQuickOpen(false)}
-                        className="block rounded-lg px-3 py-2 text-sm text-[var(--nlng-header-text)]/90 transition hover:bg-[#e2e9f0]"
-                      >
-                        {a.label}
-                      </Link>
-                    ))}
-                  </div>
-                  <div className="h-px" style={{ backgroundColor: "var(--nlng-header-border)" }} />
-                  <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--nlng-header-text)]/70">
-                    Jump to
-                  </div>
-                  <div className="px-2 pb-2 pt-1">
-                    {[
-                      { href: "/safety", label: "Current active alarms" },
-                      { href: "/fuel", label: "Fuel reports" },
-                      { href: "/geo-fencing", label: "Geo Fencing" },
-                    ].map((a) => (
-                      <Link
-                        key={a.label}
-                        href={a.href}
-                        role="menuitem"
-                        onClick={() => setQuickOpen(false)}
-                        className="block rounded-lg px-3 py-2 text-sm text-[var(--nlng-header-text)]/90 transition hover:bg-[#e2e9f0]"
-                      >
-                        {a.label}
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
             <div
               className="rounded-lg border px-3 py-1.5 text-sm font-medium md:px-3.5"
               style={{

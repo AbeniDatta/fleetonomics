@@ -6,11 +6,9 @@ import { Video } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { DataSourcePill } from "@/components/ui/data-source-pill";
 import { CameraLivePlayer } from "@/components/camera/camera-live-player";
 import {
   ADAS_CAMERA_CHANNEL,
-  cameraLabel,
   channelForRole,
   DMS_CAMERA_CHANNEL,
   type CameraRole,
@@ -43,10 +41,9 @@ async function fetchRecordings(role: CameraRole, sync: boolean): Promise<Recordi
 type Props = {
   role: CameraRole;
   title: string;
-  description: string;
 };
 
-export function CameraFeedsPanel({ role, title, description }: Props) {
+export function CameraFeedsPanel({ role, title }: Props) {
   const channel = channelForRole(role);
   const [search, setSearch] = useState("");
   const [selectedPlate, setSelectedPlate] = useState<string | null>(null);
@@ -89,23 +86,14 @@ export function CameraFeedsPanel({ role, title, description }: Props) {
   return (
     <div className="space-y-4 md:space-y-6">
       <Card>
-        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Video className="h-5 w-5 text-sky-400" />
-              {title}
-            </CardTitle>
-            <p className="mt-1 text-sm text-zinc-400">{description}</p>
-            <p className="mt-1 text-xs text-zinc-500">
-              Live via uctracking <code className="text-sky-400">realTimeVideo</code> + HLS (
-              {cameraLabel(channelIndex)} / CHN={channel})
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <DataSourcePill source={vehiclesQ.data?.source} />
-            <DataSourcePill source={recordingsQ.data?.source} uctrackingLabel="stored" />
-            {recordingsQ.isFetching ? <span className="text-xs text-zinc-500">Syncing recordings…</span> : null}
-          </div>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Video className="h-5 w-5 text-sky-400" />
+            {title}
+          </CardTitle>
+          {recordingsQ.isFetching ? (
+            <p className="mt-1 text-xs text-zinc-500">Syncing recordings…</p>
+          ) : null}
         </CardHeader>
         <CardContent className="space-y-4">
           <Input

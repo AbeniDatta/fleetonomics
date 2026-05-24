@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { DataSourcePill } from "@/components/ui/data-source-pill";
 import { CameraFeedsPanel } from "@/components/camera/camera-feeds-panel";
 import { VmsBackBar, VmsPageHero, VmsStatCard } from "@/components/vms/vms-page-blocks";
 import { fatigueHeatGrid } from "@/lib/fatigue-grid";
@@ -150,27 +149,15 @@ export default function DriversPage() {
 
   return (
     <div className="space-y-6 md:space-y-8">
-      <VmsBackBar
-        right={
-          <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-400">
-            <span>Roster:</span>
-            <DataSourcePill source={source} />
-            {rosterQ.isFetching ? <span className="text-zinc-500">Refreshing…</span> : null}
-          </div>
-        }
-      />
+      <VmsBackBar />
 
       <VmsPageHero
         icon={Users}
-        title="Driver Management System (DMS)"
-        description="Roster from uctracking queryDriverList, live DMS camera feeds (channel 1), stored recordings, and mock wellness panels until vendor fields land for HOS and breath data."
+        title="DMS"
+        description="Driver roster, in-cab monitoring cameras, and stored DMS video segments."
       />
 
-      <CameraFeedsPanel
-        role="DMS"
-        title="DMS live camera feeds"
-        description="In-cab driver monitoring (camera 1) per vehicle. Streams use the uctracking real-time video and HLS endpoints; recordings sync from getVideoFileInfo."
-      />
+      <CameraFeedsPanel role="DMS" title="DMS live camera feeds" />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 md:gap-5">
         <VmsStatCard

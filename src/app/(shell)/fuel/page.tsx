@@ -251,7 +251,11 @@ export default function FuelPage() {
     <div className="space-y-6 md:space-y-8">
       <VmsBackBar />
 
-      <VmsPageHero icon={Fuel} title="Fuel Dashboard" />
+      <VmsPageHero
+        icon={Fuel}
+        title="Fuel"
+        description="Live tank volume by vehicle and fuel or mileage reports for any date range."
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 md:gap-5">
         <VmsStatCard

@@ -85,8 +85,8 @@ export default function ReportsPage() {
 
       <VmsPageHero
         icon={FileSpreadsheet}
-        title="Reports Dashboard"
-        description="Fleet analytics by category. Mileage trend below hydrates from the vendor mileage API when available, with a demo fallback for empty payloads."
+        title="Reports"
+        description="Mileage, fuel, and fleet analytics for the period and vehicles you select."
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 md:gap-5">

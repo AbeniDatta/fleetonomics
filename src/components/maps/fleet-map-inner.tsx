@@ -644,23 +644,22 @@ export function FleetMapInner({
                   Click the map to add vertices. Finish needs at least 3 points. Vehicle markers are non-interactive while drawing.
                 </div>
               ) : null}
-              <div className="pointer-events-none absolute right-3 top-3 rounded-lg border border-vms-border bg-vms-card/95 p-3 text-xs shadow-lg md:text-sm">
-                <div>
-                  <span className="text-emerald-400">●</span> Online
+              {hideGeofencingPanel ? (
+                <div className="pointer-events-none absolute right-3 top-3 rounded-lg border border-vms-border bg-vms-card/95 p-3 text-xs shadow-lg md:text-sm">
+                  <div>
+                    <span className="text-emerald-400">●</span> Online
+                  </div>
+                  <div>
+                    <span className="text-amber-400">●</span> Idle
+                  </div>
+                  <div>
+                    <span className="text-red-400">●</span> Alert
+                  </div>
+                  <div>
+                    <span className="text-violet-400">●</span> Offline
+                  </div>
                 </div>
-                <div>
-                  <span className="text-amber-400">●</span> Idle
-                </div>
-                <div>
-                  <span className="text-red-400">●</span> Alert
-                </div>
-                <div>
-                  <span className="text-violet-400">●</span> Offline
-                </div>
-                {!hideGeofencingPanel ? (
-                  <div className="mt-2 border-t border-vms-border pt-2 text-sky-400">⬜ Saved geofences</div>
-                ) : null}
-              </div>
+              ) : null}
             </div>
           </CardContent>
         </Card>

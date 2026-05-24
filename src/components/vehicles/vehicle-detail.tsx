@@ -4,7 +4,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Layers, Settings } from "lucide-react";
+import { ArrowLeft, Fuel, Gauge, MapPin, Radio, User } from "lucide-react";
 import type { Position, Vehicle } from "@/lib/uctracking/schemas";
 import { Button } from "@/components/ui/button";
 import { DataSourcePill } from "@/components/ui/data-source-pill";
@@ -148,13 +148,34 @@ function extractLiveStatus(plate: string, vehicle: Vehicle, gpsStatus: DetailRes
   const online = row ? toBool(row.ol ?? row.online ?? row.isOnline) : vehicle.status !== "offline";
   const gpsTime = row ? toIsoMaybe(row.tm ?? row.gpsTime ?? row.time) : vehicle.lastSeenAt;
   const address = row ? (row.address ?? row.ga ?? row.geoAddress) : vehicle.locationLabel;
-  const lat = row ? toNum(row.wd ?? row.lat ?? row.latitude) : vehicle.position?.lat;
-  const lng = row ? toNum(row.jd ?? row.lng ?? row.longitude) : vehicle.position?.lng;
-  const fuelLiters = row
-    ? toNum(row.oil ?? row.fuel ?? row.fuelL ?? row.oilL ?? row.youLiang)
-    : vehicle.fuelPercent != null
-      ? Math.round((vehicle.fuelPercent / 100) * 100)
-      : null;
+  const normalizeCoord = (n: number | null) => {
+    if (n == null || !Number.isFinite(n)) return null;
+    if (Math.abs(n) > 180) {
+      const d6 = n / 1_000_000;
+      if (Math.abs(d6) <= 180) return d6;
+      const d5 = n / 100_000;
+      if (Math.abs(d5) <= 180) return d5;
+    }
+    return n;
+  };
+  const latRaw = row ? toNum(row.wd ?? row.lat ?? row.latitude) : vehicle.position?.lat ?? null;
+  const lngRaw = row ? toNum(row.jd ?? row.lng ?? row.longitude) : vehicle.position?.lng ?? null;
+  const lat = normalizeCoord(latRaw);
+  const lng = normalizeCoord(lngRaw);
+  const fuelLiters = (() => {
+    if (!row) return null;
+    const yl = toNum(row.yl ?? row.YL ?? row.youLiang);
+    if (yl != null) return yl / 100;
+    const oilL = toNum(row.oilL ?? row.fuelL);
+    if (oilL != null) return oilL;
+    const oil = toNum(row.oil ?? row.fuel);
+    if (oil != null) {
+      if (oil > 500) return oil / 100;
+      if (oil <= 100) return null;
+      return oil;
+    }
+    return null;
+  })();
   const mileageTodayKm = row
     ? toNum(row.lc ?? row.todayMile ?? row.mileage ?? row.todayLicheng ?? row.dkm)
     : null;
@@ -190,12 +211,33 @@ async function fetchPositions(): Promise<Position[]> {
   return res.json();
 }
 
-function InfoRow({ label, value, className }: { label: string; value: ReactNode; className?: string }) {
+function statusBadgeClass(status: string) {
+  if (status === "Offline") return "bg-violet-500/20 text-violet-200 ring-violet-500/40";
+  if (status === "Parking" || status === "Idle") return "bg-amber-500/20 text-amber-100 ring-amber-500/40";
+  if (status === "Moving") return "bg-emerald-500/20 text-emerald-100 ring-emerald-500/40";
+  return "bg-sky-500/20 text-sky-100 ring-sky-500/40";
+}
+
+function DetailRow({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }) {
   return (
-    <div className={cn("space-y-0.5", className)}>
-      <div className="text-sm font-medium text-sky-600 md:text-[0.9375rem]">{label}</div>
-      <div className="break-words text-sm text-zinc-900 md:text-[0.9375rem]">{value}</div>
+    <div className="border-b border-zinc-800/80 py-3.5 last:border-0">
+      <dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">{label}</dt>
+      <dd className={cn("mt-1 break-words text-sm text-zinc-100", mono && "font-mono text-[0.8125rem] tabular-nums")}>
+        {value}
+      </dd>
     </div>
+  );
+}
+
+function DetailSection({ title, icon: Icon, children }: { title: string; icon: typeof MapPin; children: ReactNode }) {
+  return (
+    <section className="border-b border-zinc-800/80 last:border-0">
+      <h3 className="flex items-center gap-2 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+        <Icon className="h-3.5 w-3.5 text-nlng-amber" aria-hidden />
+        {title}
+      </h3>
+      <dl className="px-4 pb-1">{children}</dl>
+    </section>
   );
 }
 
@@ -265,18 +307,36 @@ export function VehicleDetail({ plate }: { plate: string }) {
 
   const headerStatus =
     vehicle.status === "parked" || vehicle.status === "idle"
-      ? "Parking"
-      : vehicle.status === "offline"
+      ? "Parked"
+      : vehicle.status === "offline" || live.online === false
         ? "Offline"
         : live.speedKmh != null && live.speedKmh > 0
           ? "Moving"
-          : "Active";
+          : "Online";
 
-  const headerId = live.devIdno ?? vehicle.plate;
-  const loc =
+  const coordinates =
     live.lat != null && live.lng != null
       ? `${live.lat.toFixed(6)}, ${live.lng.toFixed(6)}`
-      : (live.address ?? vehicle.locationLabel ?? "—");
+      : null;
+
+  const fuelDisplay =
+    live.fuelLiters != null
+      ? `${live.fuelLiters.toLocaleString(undefined, { maximumFractionDigits: 1 })} L`
+      : vehicle.fuelPercent != null
+        ? `${vehicle.fuelPercent}% (level only)`
+        : "—";
+
+  const speedDisplay =
+    live.speedKmh != null ? `${Math.round(live.speedKmh)} km/h` : live.online === false ? "—" : "0 km/h";
+
+  const mileageDisplay =
+    live.mileageTodayKm != null
+      ? `${live.mileageTodayKm.toLocaleString(undefined, { maximumFractionDigits: 1 })} km`
+      : "—";
+
+  const deviceDisplay = live.devIdno ?? "—";
+  const connectionLabel =
+    live.online === false ? "Disconnected" : live.online === true ? "Connected" : "Unknown";
 
   return (
     <div className="space-y-4">
@@ -302,58 +362,55 @@ export function VehicleDetail({ plate }: { plate: string }) {
           />
         </div>
 
-        <aside className="flex w-full shrink-0 flex-col border-t border-vms-border bg-white shadow-[inset_0_1px_0_0_rgba(0,0,0,0.04)] lg:w-[min(100%,420px)] lg:max-w-[440px] lg:border-l lg:border-t-0">
-          <div className="flex items-center justify-between bg-[#1e6eb8] px-4 py-2.5 text-white">
-            <span className="font-semibold tracking-tight">
-              {headerId}[{headerStatus}]
-            </span>
-            <div className="flex items-center gap-1">
-              <button type="button" className="rounded p-1 hover:bg-white/10" aria-label="Layers">
-                <Layers className="h-4 w-4" />
-              </button>
-              <button type="button" className="rounded p-1 hover:bg-white/10" aria-label="Settings">
-                <Settings className="h-4 w-4" />
-              </button>
+        <aside className="flex w-full shrink-0 flex-col border-t border-vms-border bg-[#16181d] lg:w-[min(100%,400px)] lg:max-w-[420px] lg:border-l lg:border-t-0">
+          <div className="border-b border-zinc-800 bg-gradient-to-r from-[#1a2332] to-[#16181d] px-4 py-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Vehicle</p>
+                <h2 className="truncate text-lg font-semibold text-zinc-50">{vehicle.plate}</h2>
+              </div>
+              <span
+                className={cn(
+                  "shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset",
+                  statusBadgeClass(headerStatus),
+                )}
+              >
+                {headerStatus}
+              </span>
             </div>
+            <p className="mt-2 font-mono text-xs text-zinc-500">
+              Device <span className="text-zinc-300">{deviceDisplay}</span>
+            </p>
           </div>
+
           <div className="max-h-[min(60vh,560px)] overflow-y-auto lg:max-h-none lg:flex-1">
-            <div className="grid grid-cols-1 gap-4 p-4 text-sm sm:grid-cols-2 md:gap-5 md:p-5 md:text-[0.9375rem] lg:grid-cols-1">
-              <div className="space-y-3.5">
-                <InfoRow label="Team Name" value={live.teamName ?? "—"} />
-                <InfoRow label="GPS Time" value={formatGpsTime(live.gpsTime)} />
-                <InfoRow label="Driving Direction" value={headingLabel(live.headingDeg)} />
-                <InfoRow
-                  label="Fuel Volume Data"
-                  value={
-                    live.fuelLiters != null
-                      ? `${live.fuelLiters.toFixed(1)} L`
-                      : vehicle.fuelPercent != null
-                        ? `${vehicle.fuelPercent}%`
-                        : "—"
-                  }
-                />
-                <InfoRow label="Vehi Status" value={live.statusLabel ?? "—"} />
-                <InfoRow label="Vehi Loc" value={loc} />
-              </div>
-              <div className="space-y-3.5">
-                <InfoRow
-                  label="Drive Speed"
-                  value={live.speedKmh != null ? `${Math.round(live.speedKmh)}KM / H` : "0KM / H"}
-                />
-                <InfoRow
-                  label="Mileage Today"
-                  value={live.mileageTodayKm != null ? `${live.mileageTodayKm.toFixed(1)}KM` : "—"}
-                />
-                <InfoRow
-                  label="Device No"
-                  value={`${live.devIdno ?? "—"}${live.online === false ? "(Offline)" : live.online === true ? "(Online)" : ""}`}
-                />
-                {live.driver || vehicle.driverName ? (
-                  <InfoRow label="Driver" value={live.driver ?? vehicle.driverName ?? "—"} />
-                ) : null}
-                {live.address ? <InfoRow label="Address" value={live.address} /> : null}
-              </div>
-            </div>
+            <DetailSection title="Location" icon={MapPin}>
+              <DetailRow label="Coordinates" value={coordinates ?? "—"} mono />
+              <DetailRow label="Address" value={live.address ?? vehicle.locationLabel ?? "—"} />
+              <DetailRow label="Heading" value={headingLabel(live.headingDeg)} />
+            </DetailSection>
+
+            <DetailSection title="Telemetry" icon={Radio}>
+              <DetailRow label="Last GPS fix" value={formatGpsTime(live.gpsTime)} />
+              <DetailRow label="Current speed" value={speedDisplay} />
+              <DetailRow label="Connection" value={connectionLabel} />
+              <DetailRow label="Vehicle status" value={live.statusLabel ?? headerStatus} />
+            </DetailSection>
+
+            <DetailSection title="Fuel & distance" icon={Fuel}>
+              <DetailRow label="Current fuel volume" value={fuelDisplay} />
+              <DetailRow label="Distance today" value={mileageDisplay} />
+            </DetailSection>
+
+            <DetailSection title="Assignment" icon={User}>
+              <DetailRow label="Team" value={live.teamName ?? "—"} />
+              <DetailRow label="Driver" value={live.driver ?? vehicle.driverName ?? "—"} />
+            </DetailSection>
+
+            <DetailSection title="Device" icon={Gauge}>
+              <DetailRow label="Device number" value={deviceDisplay} mono />
+              <DetailRow label="Plate number" value={vehicle.plate} mono />
+            </DetailSection>
           </div>
         </aside>
       </div>
