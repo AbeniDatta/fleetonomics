@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { demoFooter } from "@/lib/uctracking/demo-data";
+import { getFooterPayload } from "@/lib/api/fleet-handlers";
 
 export async function GET() {
-  return NextResponse.json({ source: "mock", data: demoFooter });
+  const payload = await getFooterPayload();
+  return NextResponse.json(payload);
 }

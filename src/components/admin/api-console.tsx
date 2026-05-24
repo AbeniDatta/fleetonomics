@@ -75,7 +75,7 @@ export function ApiConsole({ title, endpoint, description, defaultParams, autoRu
     <Card>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        {description ? <div className="text-sm text-zinc-400 md:text-base">{description}</div> : null}
+        {description ? <div className="text-sm text-zinc-400">{description}</div> : null}
       </CardHeader>
       <CardContent className="space-y-3">
         {keys.length ? (
@@ -93,10 +93,10 @@ export function ApiConsole({ title, endpoint, description, defaultParams, autoRu
             ))}
           </div>
         ) : (
-          <div className="text-sm text-zinc-500 md:text-base">No parameters</div>
+          <div className="text-sm text-zinc-500">No parameters</div>
         )}
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" onClick={run} disabled={loading} className="md:h-10 md:text-base">
+          <Button size="sm" onClick={run} disabled={loading} className="md:h-10">
             {loading ? "Running…" : "Run"}
           </Button>
           <Button
@@ -108,7 +108,7 @@ export function ApiConsole({ title, endpoint, description, defaultParams, autoRu
               setError(null);
             }}
             disabled={loading}
-            className="md:h-10 md:text-base"
+            className="md:h-10"
           >
             Reset
           </Button>

@@ -18,7 +18,7 @@ import L from "leaflet";
 import type { Position } from "@/lib/uctracking/schemas";
 import type { SavedGeofence } from "@/lib/geofences/types";
 import { useUiStore } from "@/store/ui-store";
-import { cn } from "@/lib/utils";
+import { cn, ensureArray } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,8 +33,6 @@ import "leaflet/dist/leaflet.css";
 const center: [number, number] = [9.08, 8.675];
 /** Legacy browser-only key — migrated once to the server store. */
 const GEOFENCE_STORAGE_KEY = "fleetonomics:fleet-map:geofence-polygon:v1";
-
-const EMPTY_GEOFENCES: SavedGeofence[] = [];
 
 const FENCE_COLORS = ["#0ea5e9", "#a855f7", "#f97316", "#22c55e", "#ec4899", "#eab308"];
 
@@ -205,7 +203,8 @@ async function fetchGeofences(): Promise<{ geofences: SavedGeofence[] }> {
   const res = await fetch("/api/fleet/geofences");
   if (res.status === 401) return { geofences: [] };
   if (!res.ok) throw new Error("geofences");
-  return res.json();
+  const body = await res.json();
+  return { geofences: ensureArray<SavedGeofence>(body?.geofences ?? body) };
 }
 
 async function fetchGeofenceEvents(hours = 24): Promise<{ source: string; events: FenceAlarm[]; hours: number }> {
@@ -222,6 +221,8 @@ export function FleetMapInner({
   userMarkersSource,
   compact = false,
   hideGeofencingPanel = false,
+  selectedFenceId: selectedFenceIdProp,
+  onSelectedFenceIdChange,
   className,
   mapAreaClassName,
 }: {
@@ -232,12 +233,22 @@ export function FleetMapInner({
   compact?: boolean;
   /** Hide geofence tools, list, map overlays, and related API calls (e.g. vehicle detail map). */
   hideGeofencingPanel?: boolean;
+  /** When set with `onSelectedFenceIdChange`, selection is controlled by the parent (e.g. geo-fencing dashboard). */
+  selectedFenceId?: string | null;
+  onSelectedFenceIdChange?: (id: string | null) => void;
   className?: string;
   mapAreaClassName?: string;
 }) {
   const queryClient = useQueryClient();
   const { mapFilter, setMapFilter, selectedVehiclePlate, setSelectedVehiclePlate } = useUiStore();
   const [showAreaTools, setShowAreaTools] = useState(false);
+  const [uncontrolledFenceId, setUncontrolledFenceId] = useState<string | null>(null);
+  const fenceSelectionControlled = onSelectedFenceIdChange !== undefined;
+  const selectedFenceId = fenceSelectionControlled ? (selectedFenceIdProp ?? null) : uncontrolledFenceId;
+  const setSelectedFenceId = (id: string | null) => {
+    if (fenceSelectionControlled) onSelectedFenceIdChange(id);
+    else setUncontrolledFenceId(id);
+  };
 
   const geofencesQ = useQuery({
     queryKey: ["fleet-geofences"],
@@ -245,7 +256,10 @@ export function FleetMapInner({
     refetchOnWindowFocus: true,
     enabled: !hideGeofencingPanel,
   });
-  const geofences = geofencesQ.data?.geofences ?? EMPTY_GEOFENCES;
+  const geofences = useMemo(
+    () => ensureArray<SavedGeofence>(geofencesQ.data?.geofences),
+    [geofencesQ.data?.geofences],
+  );
 
   const migratedRef = useRef(false);
 
@@ -255,7 +269,6 @@ export function FleetMapInner({
   const [shapeEditId, setShapeEditId] = useState<string | null>(null);
   const [newFenceName, setNewFenceName] = useState("New geofence");
   const [fenceAlarms, setFenceAlarms] = useState<FenceAlarm[]>([]);
-  const [selectedFenceId, setSelectedFenceId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
 
   const prevVehiclePosRef = useRef<Map<string, LatLng>>(new Map());
@@ -398,12 +411,12 @@ export function FleetMapInner({
   const startEditShape = useCallback((g: SavedGeofence) => {
     setSelectedFenceId(g.id);
     setShapeEditId(g.id);
-    setDraftRing(g.ring.map(([a, b]) => [a, b] as LatLng));
+    setDraftRing(Array.isArray(g.ring) ? g.ring.map(([a, b]) => [a, b] as LatLng) : []);
     setDrawingMode(true);
   }, []);
 
   const fenceSignature = useMemo(
-    () => geofences.map((g) => `${g.id}:${g.enabled}:${g.updatedAt}:${g.ring.length}`).join("|"),
+    () => geofences.map((g) => `${g.id}:${g.enabled}:${g.updatedAt}:${Array.isArray(g.ring) ? g.ring.length : 0}`).join("|"),
     [geofences],
   );
 
@@ -413,7 +426,7 @@ export function FleetMapInner({
   }, [fenceSignature]);
 
   useEffect(() => {
-    const active = geofences.filter((g) => g.enabled && g.ring.length >= 3);
+    const active = geofences.filter((g) => g.enabled && Array.isArray(g.ring) && g.ring.length >= 3);
     if (active.length === 0) return;
 
     const DEBOUNCE_MS = 45_000;
@@ -506,7 +519,7 @@ export function FleetMapInner({
                 type="button"
                 onClick={() => setMapFilter(p.id)}
                 className={cn(
-                  "rounded-full border px-4 py-2 text-sm font-medium transition-colors md:px-5 md:py-2.5 md:text-base",
+                  "rounded-full border px-4 py-2 text-sm font-medium transition-colors md:px-5 md:py-2.5",
                   mapFilter === p.id
                     ? "border-nlng-blue bg-nlng-blue text-white"
                     : "border-vms-border bg-vms-inset text-zinc-300 hover:bg-vms-elevated",
@@ -531,7 +544,7 @@ export function FleetMapInner({
                 {hideGeofencingPanel ? <FitMapToOverlayPositions positions={filtered} /> : null}
                 <GeofenceMapClicks enabled={!hideGeofencingPanel && drawingMode} onPoint={onAddDraftVertex} />
                 {geofences.map((g, i) => {
-                  if (g.ring.length < 3) return null;
+                  if (!Array.isArray(g.ring) || g.ring.length < 3) return null;
                   const c = FENCE_COLORS[i % FENCE_COLORS.length];
                   const isSel = selectedFenceId === g.id;
                   return (
@@ -546,7 +559,7 @@ export function FleetMapInner({
                         opacity: g.enabled ? 1 : 0.45,
                       }}
                       eventHandlers={{
-                        click: () => setSelectedFenceId(g.id),
+                        click: () => setSelectedFenceId(g.id === selectedFenceId ? null : g.id),
                       }}
                     >
                       <Tooltip sticky>
@@ -618,7 +631,7 @@ export function FleetMapInner({
                     }
                   >
                     <Popup>
-                      <div className="text-sm md:text-base">
+                      <div className="text-sm">
                         <div className="font-semibold">{p.plate}</div>
                         <div className="text-zinc-600">{p.speedKmh ?? 0} km/h</div>
                       </div>
@@ -659,7 +672,7 @@ export function FleetMapInner({
           <CardHeader>
             <CardTitle>My geofences</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm md:text-base">
+          <CardContent className="space-y-3 text-sm">
             {geofencesQ.isError ? (
               <div className="text-sm text-red-400">Could not load geofences.</div>
             ) : null}
@@ -668,7 +681,7 @@ export function FleetMapInner({
               <Button
                 size="sm"
                 variant="default"
-                className="w-full md:h-10 md:text-base"
+                className="w-full md:h-10"
                 onClick={startNewFence}
                 disabled={drawingMode}
               >
@@ -811,9 +824,9 @@ export function FleetMapInner({
             </CardHeader>
             <CardContent className="space-y-2">
               {fenceAlarms.length === 0 ? (
-                <div className="text-sm text-zinc-500 md:text-base">No geofence events in the last 24 hours.</div>
+                <div className="text-sm text-zinc-500">No geofence events in the last 24 hours.</div>
               ) : (
-                <ul className="max-h-[220px] space-y-2 overflow-y-auto text-sm md:text-base">
+                <ul className="max-h-[220px] space-y-2 overflow-y-auto text-sm">
                   {fenceAlarms.map((a) => (
                     <li key={a.id} className="rounded-lg border border-red-900/40 bg-red-950/25 px-3 py-2">
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -842,7 +855,7 @@ export function FleetMapInner({
             <CardHeader>
               <CardTitle>Areas / Geofences</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 text-sm md:text-base">
+            <CardContent className="space-y-2 text-sm">
               <div className="text-xs text-zinc-500 md:text-sm">
                 These are coming from uctracking `User Area Information` / marker APIs. Shapes vary by account; we render point/circle
                 immediately and keep full CRUD available below.
@@ -850,7 +863,7 @@ export function FleetMapInner({
               <Button
                 variant="outline"
                 size="sm"
-                className="mt-2 w-full md:h-10 md:text-base"
+                className="mt-2 w-full md:h-10"
                 onClick={() => setShowAreaTools((v) => !v)}
               >
                 {showAreaTools ? "Hide area tools" : "Show area tools"}
@@ -911,14 +924,14 @@ export function FleetMapInner({
         <div className="fixed inset-y-0 right-0 z-[2000] w-full max-w-md border-l border-vms-border bg-vms-card p-5 shadow-2xl md:max-w-lg md:p-6">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-lg font-semibold text-zinc-50 md:text-xl">{selected.plate}</div>
-              <div className="text-sm text-zinc-400 md:text-base">Live position</div>
+              <div className="text-lg font-semibold text-zinc-50">{selected.plate}</div>
+              <div className="text-sm text-zinc-400">Live position</div>
             </div>
             <Button variant="ghost" size="sm" onClick={() => setSelectedVehiclePlate(null)}>
               Close
             </Button>
           </div>
-          <div className="mt-5 space-y-3 text-sm md:text-base">
+          <div className="mt-5 space-y-3 text-sm">
             <div className="flex justify-between border-b border-vms-border py-2">
               <span className="text-zinc-500">Speed</span>
               <span className="font-semibold text-zinc-100">{selected.speedKmh ?? 0} km/h</span>

@@ -28,14 +28,14 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6 md:space-y-8">
-      <h1 className="mb-4 text-xl font-semibold tracking-tight text-zinc-50 md:mb-6 md:text-2xl">Settings</h1>
+      <h1 className="vms-page-title mb-4 md:mb-6">Settings</h1>
 
       <div className="grid gap-4 md:gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Alert thresholds</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 text-sm md:text-base">
+          <CardContent className="space-y-4 text-sm">
             <div className="flex items-center justify-between gap-3">
               <span className="text-zinc-300">Overspeed (km/h)</span>
               <Input className="w-24" defaultValue="90" />
@@ -58,7 +58,7 @@ export default function SettingsPage() {
           <CardHeader>
             <CardTitle>Notifications</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm md:text-base">
+          <CardContent className="space-y-2 text-sm">
             <div className="flex items-center justify-between border-b border-vms-border py-3">
               <span className="text-zinc-200">Email</span>
               <Toggle on={email} onToggle={() => setEmail((v) => !v)} />
@@ -80,7 +80,7 @@ export default function SettingsPage() {
           <CardTitle>User roles</CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-sm md:text-base">
+          <table className="w-full min-w-[640px] text-left text-sm">
             <thead className="text-xs md:text-sm uppercase text-zinc-400">
               <tr>
                 <th className="border-b border-vms-border py-3">User</th>
@@ -109,7 +109,7 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle>Hardware devices</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-1 text-sm md:text-base">
+        <CardContent className="space-y-1 text-sm">
           {[
             ["GPS / OBD", "Online", "98%"],
             ["Fuel sensor", "Degraded", "3 units"],
@@ -121,7 +121,7 @@ export default function SettingsPage() {
               <span className="text-zinc-400">{n}</span>
             </div>
           ))}
-          <p className="pt-2 text-sm md:text-base text-zinc-400">
+          <p className="pt-2 text-sm text-zinc-400">
             API integrations: configure uctracking base URL and token in `.env.local` (see comments there).
           </p>
         </CardContent>

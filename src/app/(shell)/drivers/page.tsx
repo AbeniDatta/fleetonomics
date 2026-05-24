@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { DataSourcePill } from "@/components/ui/data-source-pill";
-import { VmsBackBar, VmsLocationToggle, VmsPageHero, VmsStatCard, type VmsLocationFilter } from "@/components/vms/vms-page-blocks";
+import { CameraFeedsPanel } from "@/components/camera/camera-feeds-panel";
+import { VmsBackBar, VmsPageHero, VmsStatCard } from "@/components/vms/vms-page-blocks";
 import { fatigueHeatGrid } from "@/lib/fatigue-grid";
 import type { BreathLog } from "@/lib/uctracking/schemas";
 import type { DriverListRow } from "@/lib/uctracking/normalize-driver-list";
@@ -59,18 +60,8 @@ function mockScoreFromId(id: string): number {
   return 55 + (h % 45);
 }
 
-function inferDriverLocation(label: string | null | undefined): "CHO" | "Bonny" | "Other" {
-  const n = (label ?? "").toLowerCase();
-  if (n.includes("bonny")) return "Bonny";
-  if (n.includes("cho") || n.includes("ph gate") || n.includes("depot") || n.includes("trans-amadi") || n.includes("eleme")) {
-    return "CHO";
-  }
-  return "Other";
-}
-
 export default function DriversPage() {
   const [search, setSearch] = useState("");
-  const [location, setLocation] = useState<VmsLocationFilter>("all");
   const deferredSearch = useDeferredValue(search);
 
   const rosterQ = useQuery({
@@ -91,18 +82,10 @@ export default function DriversPage() {
   const rows = useMemo(() => rosterQ.data?.drivers ?? [], [rosterQ.data]);
   const totalFleet = rosterQ.data?.total ?? rows.length;
 
-  const locationRows = useMemo(() => {
-    if (location === "all") return rows;
-    return rows.filter((r) => {
-      const loc = inferDriverLocation(r.address ?? r.birthplace ?? "");
-      return loc === location || (location === "CHO" && loc === "Other");
-    });
-  }, [rows, location]);
-
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return locationRows;
-    return locationRows.filter(
+    if (!q) return rows;
+    return rows.filter(
       (r) =>
         r.name.toLowerCase().includes(q) ||
         r.workNumber.toLowerCase().includes(q) ||
@@ -110,7 +93,7 @@ export default function DriversPage() {
         r.licenseNumber.toLowerCase().includes(q) ||
         (r.vehiclePlate ?? "").toLowerCase().includes(q),
     );
-  }, [locationRows, search]);
+  }, [rows, search]);
 
   const syncedAgo = rosterQ.dataUpdatedAt
     ? Math.max(0, Math.round((Date.now() - rosterQ.dataUpdatedAt) / 1000))
@@ -169,21 +152,24 @@ export default function DriversPage() {
     <div className="space-y-6 md:space-y-8">
       <VmsBackBar
         right={
-          <div className="flex flex-wrap items-center gap-3">
-            <VmsLocationToggle value={location} onChange={setLocation} />
-            <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-400 md:text-base">
-              <span>Roster:</span>
-              <DataSourcePill source={source} />
-              {rosterQ.isFetching ? <span className="text-zinc-500">Refreshing…</span> : null}
-            </div>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-400">
+            <span>Roster:</span>
+            <DataSourcePill source={source} />
+            {rosterQ.isFetching ? <span className="text-zinc-500">Refreshing…</span> : null}
           </div>
         }
       />
 
       <VmsPageHero
         icon={Users}
-        title="Drivers Dashboard"
-        description="Roster from uctracking queryDriverList, exportable grid, and mock wellness panels until vendor fields land for HOS and breath data."
+        title="Driver Management System (DMS)"
+        description="Roster from uctracking queryDriverList, live DMS camera feeds (channel 1), stored recordings, and mock wellness panels until vendor fields land for HOS and breath data."
+      />
+
+      <CameraFeedsPanel
+        role="DMS"
+        title="DMS live camera feeds"
+        description="In-cab driver monitoring (camera 1) per vehicle. Streams use the uctracking real-time video and HLS endpoints; recordings sync from getVideoFileInfo."
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 md:gap-5">
@@ -223,7 +209,7 @@ export default function DriversPage() {
 
       <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 md:px-5 md:py-4">
         <BookOpen className="mt-0.5 h-5 w-5 shrink-0 text-nlng-amber" />
-        <p className="text-sm text-amber-100/90 md:text-base">
+        <p className="text-sm text-amber-100/90">
           Breathalyzer and fatigue widgets at the bottom of this page are <strong className="text-amber-50">mock data</strong>.
           Punch card and identify-alarm tools live under{" "}
           <Link href="/settings" className="font-medium text-sky-400 underline hover:text-sky-300">
@@ -237,12 +223,12 @@ export default function DriversPage() {
         <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <CardTitle>Filters &amp; actions</CardTitle>
-            <p className="mt-1 text-sm text-zinc-400 md:text-base">
-              Location matches address / birthplace text when it mentions CHO or Bonny. Additional dropdowns are placeholders
-              until the vendor exposes status and licence filters.
+            <p className="mt-1 text-sm text-zinc-400">
+              Search by name, phone, licence, or vehicle plate. Status and licence dropdowns are placeholders until the vendor
+              exposes those filters.
             </p>
           </div>
-          <Button asChild size="sm" className="shrink-0 md:h-11 md:text-base">
+          <Button asChild size="sm" className="shrink-0 md:h-11">
             <Link href="/settings">+ Add driver (API tools)</Link>
           </Button>
         </CardHeader>
@@ -274,14 +260,14 @@ export default function DriversPage() {
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <CardTitle>Driver roster</CardTitle>
-            <p className="mt-1 text-sm text-zinc-400 md:text-base">
-              Showing {filtered.length} driver{filtered.length === 1 ? "" : "s"} for the current location and search.
+            <p className="mt-1 text-sm text-zinc-400">
+              Showing {filtered.length} driver{filtered.length === 1 ? "" : "s"} matching search.
             </p>
           </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px] text-left text-sm md:text-base">
+            <table className="w-full min-w-[920px] text-left text-sm">
               <thead className="text-xs font-semibold uppercase tracking-wide text-zinc-500 md:text-sm">
                 <tr>
                   <th className="border-b border-vms-border py-3 pl-4 pr-4">Driver</th>
@@ -313,7 +299,7 @@ export default function DriversPage() {
                       <tr key={r.id} className="hover:bg-vms-inset/60">
                         <td className="border-b border-vms-border py-3 pl-4 pr-4">
                           <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-nlng-blue text-sm font-semibold text-white md:h-11 md:w-11 md:text-base">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-nlng-blue text-sm font-semibold text-white md:h-11 md:w-11">
                               {initials(r.name)}
                             </div>
                             <div>
@@ -366,7 +352,7 @@ export default function DriversPage() {
           </table>
           </div>
 
-        <div className="flex flex-col gap-3 border-t border-vms-border px-4 py-3 text-sm text-zinc-500 md:flex-row md:items-center md:justify-between md:text-base">
+        <div className="flex flex-col gap-3 border-t border-vms-border px-4 py-3 text-sm text-zinc-500 md:flex-row md:items-center md:justify-between">
           <p>
             Showing <span className="font-medium text-zinc-300">{filtered.length}</span> of{" "}
             <span className="font-medium text-zinc-300">{totalFleet.toLocaleString()}</span> drivers
@@ -398,7 +384,7 @@ export default function DriversPage() {
               <CardTitle className="text-base font-semibold">Breathalyzer log</CardTitle>
               <Badge variant="warn">mock data</Badge>
             </CardHeader>
-            <CardContent className="space-y-1 text-sm md:text-base">
+            <CardContent className="space-y-1 text-sm">
               {(mockPanel?.breathalyzer ?? []).map((b, i) => (
                 <div key={i} className="flex justify-between border-b border-vms-border py-2 last:border-0">
                   <span>{b.driverName}</span>

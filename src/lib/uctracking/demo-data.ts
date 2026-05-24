@@ -32,16 +32,6 @@ export const demoKpi: DashboardKpi = {
   avgOnlineHoursPerDay: 18.6,
 };
 
-export const demoFooter: FleetFooter = {
-  lastSyncSecondsAgo: 8,
-  gpsOnline: 1105,
-  obdOnline: 980,
-  fuelSensorOnline: 820,
-  dmsOnline: 774,
-  tpmsOnline: 640,
-  version: "2.4.1",
-};
-
 export const demoVehicles: Vehicle[] = [
   {
     id: "v1",
@@ -148,6 +138,15 @@ export const demoVehicles: Vehicle[] = [
     alarmSummary: null,
   },
 ];
+
+export const demoFooter: FleetFooter = {
+  fleetCount: demoVehicles.length,
+  onlineCount: demoVehicles.filter((v) => v.status !== "offline").length,
+  fuelReportingCount: 5,
+  movingCount: demoVehicles.filter((v) => (v.speedKmh ?? 0) > 0).length,
+  integrationLabel: "Demo data",
+  version: "0.1.0",
+};
 
 export const demoAlarms: Alarm[] = [
   {

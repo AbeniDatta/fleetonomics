@@ -240,6 +240,9 @@ function extractArray(raw: unknown): unknown[] {
     if (Array.isArray(r.vehicles)) return r.vehicles as unknown[];
     if (Array.isArray(r.rows)) return r.rows as unknown[];
     if (Array.isArray(r.list)) return r.list as unknown[];
+    if (Array.isArray(r.infos)) return r.infos as unknown[];
+    if (Array.isArray(r.status)) return r.status as unknown[];
+    if (Array.isArray(r.files)) return r.files as unknown[];
     // As a last resort, pick the largest array value.
     let best: unknown[] | null = null;
     for (const v of Object.values(r)) {

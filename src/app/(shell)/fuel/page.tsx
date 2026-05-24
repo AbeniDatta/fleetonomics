@@ -4,15 +4,17 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Activity, AlertTriangle, Fuel, Gauge, Truck } from "lucide-react";
+import { Fuel, Gauge, Navigation, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DataSourcePill } from "@/components/ui/data-source-pill";
 import { Input } from "@/components/ui/input";
 import { VmsBackBar, VmsPageHero, VmsStatCard } from "@/components/vms/vms-page-blocks";
 import { cn } from "@/lib/utils";
-import type { Vehicle } from "@/lib/uctracking/schemas";
 import { extractTotalFromRaw, fuelReportTableFromRaw, fuelVelocitySeriesFromRaw } from "@/lib/uctracking/normalize-fuel-report";
+import {
+  fuelPerVehicleMetrics,
+  type FuelPerVehicleRow,
+} from "@/lib/uctracking/normalize-fleet-fuel-snapshot";
 
 type ReportTab =
   | "summary"
@@ -55,10 +57,27 @@ function toVendorDateTime(local: string): string {
   return s.slice(0, 19);
 }
 
-async function fetchVehicles(): Promise<{ source: string; data: Vehicle[] }> {
+async function fetchFuelPerVehicle(): Promise<{ source: string; vehicles: FuelPerVehicleRow[] }> {
+  const res = await fetch("/api/fleet/fuel/per-vehicle");
+  if (!res.ok) throw new Error("fuel-per-vehicle");
+  return res.json();
+}
+
+async function fetchVehiclesForSelect(): Promise<{ source: string; data: { plate: string; driverName?: string | null }[] }> {
   const res = await fetch("/api/fleet/vehicles");
   if (!res.ok) throw new Error("vehicles");
-  return res.json();
+  const body = await res.json();
+  return body;
+}
+
+function formatFuelLiters(l: number | null): string {
+  if (l == null || !Number.isFinite(l)) return "—";
+  return `${l.toLocaleString(undefined, { maximumFractionDigits: 1 })} L`;
+}
+
+function formatSpeed(kmh: number | null): string {
+  if (kmh == null || !Number.isFinite(kmh)) return "—";
+  return `${Math.round(kmh)} km/h`;
 }
 
 function buildOilReportUrl(opts: {
@@ -144,9 +163,16 @@ export default function FuelPage() {
    */
   const [refetchNonce, setRefetchNonce] = useState(0);
 
-  const vehiclesQ = useQuery({
-    queryKey: ["fuel-vehicles"],
-    queryFn: fetchVehicles,
+  const fuelPerVehicleQ = useQuery({
+    queryKey: ["fuel-per-vehicle"],
+    queryFn: fetchFuelPerVehicle,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+
+  const vehiclesSelectQ = useQuery({
+    queryKey: ["fuel-vehicles-select"],
+    queryFn: fetchVehiclesForSelect,
     staleTime: 60_000,
   });
 
@@ -184,15 +210,8 @@ export default function FuelPage() {
   const chartSeries = useMemo(() => fuelVelocitySeriesFromRaw(reportQ.data?.data ?? null), [reportQ.data?.data]);
   const totalHint = useMemo(() => extractTotalFromRaw(reportQ.data?.data ?? null), [reportQ.data?.data]);
 
-  const fuelMetrics = useMemo(() => {
-    const fleet = vehiclesQ.data?.data ?? [];
-    const total = fleet.length;
-    const withFuel = fleet.filter((v) => v.fuelPercent != null);
-    const avg =
-      withFuel.length > 0 ? Math.round(withFuel.reduce((s, v) => s + (v.fuelPercent ?? 0), 0) / withFuel.length) : null;
-    const low = withFuel.filter((v) => (v.fuelPercent ?? 0) < 15).length;
-    return { total, avg, low, withFuelCount: withFuel.length };
-  }, [vehiclesQ.data?.data]);
+  const fuelRows = fuelPerVehicleQ.data?.vehicles ?? [];
+  const fuelMetrics = useMemo(() => fuelPerVehicleMetrics(fuelRows), [fuelRows]);
 
   const showChart = (tab === "quantity" || tab === "consumption") && chartSeries.length >= 1;
 
@@ -230,71 +249,94 @@ export default function FuelPage() {
 
   return (
     <div className="space-y-6 md:space-y-8">
-      <VmsBackBar
-        right={
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-zinc-500 md:text-sm">Report data</span>
-            <DataSourcePill source={reportQ.data?.source} />
-          </div>
-        }
-      />
+      <VmsBackBar />
 
-      <VmsPageHero
-        icon={Fuel}
-        title="Fuel Dashboard"
-        description="Oil and fuel reports from uctracking, live tank levels from the fleet list, and velocity profiles when the vendor payload supports them."
-      />
+      <VmsPageHero icon={Fuel} title="Fuel Dashboard" />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 md:gap-5">
         <VmsStatCard
           label="Fleet vehicles"
           value={fuelMetrics.total}
-          sub="Available for reporting"
-          trend={vehiclesQ.isFetching ? "Refreshing fleet…" : "Live from /api/fleet/vehicles"}
-          trendTone="neutral"
+          sub="On your account"
           icon={Truck}
         />
         <VmsStatCard
-          label="Avg fuel level"
-          value={fuelMetrics.avg != null ? `${fuelMetrics.avg}%` : "—"}
-          sub={`${fuelMetrics.withFuelCount} vehicles with a reading`}
-          trend={fuelMetrics.withFuelCount > 0 ? "Across vehicles reporting %" : "No fuel % in vendor feed"}
-          trendTone={fuelMetrics.avg != null && fuelMetrics.avg >= 30 ? "good" : fuelMetrics.avg != null ? "bad" : "neutral"}
+          label="Avg fuel volume"
+          value={fuelMetrics.avgVolumeL != null ? formatFuelLiters(fuelMetrics.avgVolumeL) : "—"}
+          sub={`${fuelMetrics.withVolumeCount} vehicles reporting volume (L)`}
+          subTone={fuelMetrics.withVolumeCount > 0 ? "good" : "neutral"}
           icon={Gauge}
         />
         <VmsStatCard
-          label="Low fuel alerts"
-          value={fuelMetrics.low}
-          sub="Under 15% tank"
-          trend={fuelMetrics.low > 0 ? "Review refuel schedule" : "No low tanks in current snapshot"}
-          trendTone={fuelMetrics.low > 0 ? "bad" : "good"}
-          icon={AlertTriangle}
+          label="Live fuel reporting"
+          value={fuelMetrics.withVolumeCount}
+          sub={`${fuelMetrics.withVolumeCount} of ${fuelMetrics.total} vehicles with live fuel data`}
+          subTone={fuelMetrics.withVolumeCount > 0 ? "good" : "neutral"}
+          icon={Fuel}
         />
         <VmsStatCard
-          label="Result rows"
-          value={table.rows.length}
-          sub={`Page ${queryKey.page} · tab: ${tab}`}
-          trend={reportQ.isFetching ? "Loading report…" : "After last Query"}
-          trendTone="neutral"
-          icon={Activity}
+          label="Total fleet fuel"
+          value={
+            fuelMetrics.totalFleetFuelL != null ? formatFuelLiters(fuelMetrics.totalFleetFuelL) : "—"
+          }
+          sub={`${fuelMetrics.withVolumeCount} vehicles with tank volume`}
+          subTone={fuelMetrics.withVolumeCount > 0 ? "good" : "neutral"}
+          trend={`${fuelMetrics.movingCount} vehicles moving now`}
+          trendTone={fuelMetrics.movingCount > 0 ? "good" : "neutral"}
+          icon={Navigation}
         />
       </div>
 
-      {fuelMetrics.low > 0 ? (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 md:px-5 md:py-4">
-          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-nlng-amber" />
-          <p className="text-sm text-amber-100/90 md:text-base">
-            <span className="font-semibold text-amber-50">{fuelMetrics.low} vehicle(s)</span> below 15% fuel. Coordinate
-            refueling and validate sensor drift in the detailed oil reports.
-          </p>
-        </div>
-      ) : null}
+      <Card>
+        <CardHeader>
+          <CardTitle>Fuel per vehicle</CardTitle>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          {fuelPerVehicleQ.isError ? (
+            <p className="text-sm text-red-400">Could not load live fuel data.</p>
+          ) : fuelPerVehicleQ.isLoading ? (
+            <p className="text-sm text-zinc-500">Loading fuel and speed from device status…</p>
+          ) : fuelRows.length === 0 ? (
+            <p className="text-sm text-zinc-500">No vehicles in the fleet list.</p>
+          ) : (
+            <table className="w-full min-w-[520px] text-left text-sm">
+              <thead className="text-xs font-semibold uppercase tracking-wide text-zinc-500 md:text-sm">
+                <tr>
+                  <th className="border-b border-vms-border py-3 pr-4">Device number</th>
+                  <th className="border-b border-vms-border py-3 pr-4">Fuel volume</th>
+                  <th className="border-b border-vms-border py-3">Current speed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {fuelRows.map((r) => (
+                  <tr key={r.vehicleId} className="hover:bg-vms-inset/60">
+                    <td className="border-b border-vms-border py-3 pr-4">
+                      <Link
+                        href={`/vehicles/${encodeURIComponent(r.plate)}`}
+                        className="font-semibold text-sky-400 hover:underline"
+                      >
+                        {r.devIdno}
+                      </Link>
+                    </td>
+                    <td className="border-b border-vms-border py-3 pr-4 tabular-nums text-zinc-200">
+                      {formatFuelLiters(r.fuelVolumeL)}
+                    </td>
+                    <td className="border-b border-vms-border py-3 tabular-nums text-zinc-200">
+                      {formatSpeed(r.speedKmh)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
           <div>
             <CardTitle>Report type</CardTitle>
-            <p className="mt-1 text-sm text-zinc-400 md:text-base">Vendor tabs map to uctracking oil/mileage endpoints.</p>
+            <p className="vms-page-lead mt-1">Vendor tabs map to uctracking oil/mileage endpoints.</p>
           </div>
         </CardHeader>
         <CardContent>
@@ -305,7 +347,7 @@ export default function FuelPage() {
                 type="button"
                 onClick={() => selectTab(t.id)}
                 className={cn(
-                  "rounded-md px-3 py-1.5 text-left text-sm font-medium transition-colors md:px-4 md:py-2 md:text-base",
+                  "rounded-md px-3 py-1.5 text-left text-sm font-medium transition-colors md:px-4 md:py-2",
                   tab === t.id ? "bg-nlng-amber text-white shadow-sm" : "text-zinc-400 hover:text-zinc-200",
                 )}
               >
@@ -320,7 +362,7 @@ export default function FuelPage() {
         <CardHeader>
           <div>
             <CardTitle>Query</CardTitle>
-            <p className="mt-1 text-sm text-zinc-400 md:text-base">
+            <p className="mt-1 text-sm text-zinc-400">
               Narrow the window and vehicle scope. Use <strong className="text-zinc-300">byOil override</strong> if your tenant
               uses different report codes.
             </p>
@@ -343,8 +385,8 @@ export default function FuelPage() {
               onChange={(e) => setVehicleNo(e.target.value)}
             >
               <option value="__all__">All vehicles</option>
-              {(vehiclesQ.data?.data ?? []).map((v) => (
-                <option key={v.id} value={v.plate}>
+              {(vehiclesSelectQ.data?.data ?? []).map((v, i) => (
+                <option key={`${v.plate}-${i}`} value={v.plate}>
                   {v.plate}
                   {v.driverName ? ` — ${v.driverName}` : ""}
                 </option>
@@ -425,7 +467,7 @@ export default function FuelPage() {
           <CardHeader>
             <div>
               <CardTitle>Fuel / velocity profile</CardTitle>
-              <p className="mt-1 text-sm text-zinc-400 md:text-base">
+              <p className="mt-1 text-sm text-zinc-400">
                 Built when the payload includes recognizable fuel-level and speed columns.
               </p>
             </div>
@@ -460,7 +502,7 @@ export default function FuelPage() {
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
           <div>
             <CardTitle>Results</CardTitle>
-            <p className="mt-1 text-sm text-zinc-400 md:text-base">Paged vendor table — columns mirror the raw JSON.</p>
+            <p className="mt-1 text-sm text-zinc-400">Paged vendor table — columns mirror the raw JSON.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-500">
             {totalHint != null ? <span>Total (hint): {totalHint}</span> : null}
@@ -500,7 +542,7 @@ export default function FuelPage() {
             </p>
           ) : null}
           {table.columns.length > 0 ? (
-            <table className="w-full min-w-[960px] text-left text-sm md:text-base">
+            <table className="w-full min-w-[960px] text-left text-sm">
               <thead className="text-xs font-semibold uppercase tracking-wide text-zinc-500 md:text-sm">
                 <tr>
                   <th className="border-b border-vms-border py-3 pr-2">#</th>
@@ -527,66 +569,7 @@ export default function FuelPage() {
               </tbody>
             </table>
           ) : !reportQ.isFetching ? (
-            <p className="text-sm text-zinc-500">
-              {reportQ.data?.source === "uctracking"
-                ? "uctracking responded, but no table rows were found in the JSON (empty period or unexpected shape). Open the response in DevTools → Network → mileage-details."
-                : reportQ.data?.source === "demo" || reportQ.data?.source === "error"
-                  ? "No rows to show for this response."
-                  : "Click Query to load a report."}
-            </p>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <div>
-            <CardTitle>Fleet list (live levels)</CardTitle>
-            <p className="mt-1 text-sm text-zinc-400 md:text-base">From vehicle status — fuel column when the vendor supplies it.</p>
-          </div>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <DataSourcePill source={vehiclesQ.data?.source} />
-            {vehiclesQ.isFetching ? <span className="text-xs text-zinc-500">Loading vehicles…</span> : null}
-          </div>
-          {vehiclesQ.isError ? (
-            <p className="text-sm text-red-400">Could not load /api/fleet/vehicles.</p>
-          ) : null}
-          {!vehiclesQ.isFetching && (vehiclesQ.data?.data?.length ?? 0) === 0 ? (
-            <p className="mb-3 text-sm text-zinc-500">
-              {vehiclesQ.data?.source === "uctracking"
-                ? "The vehicles API returned zero rows for this account (empty fleet, or filters on the vendor side)."
-                : vehiclesQ.data?.source === "error"
-                  ? "Vehicle list failed — see server logs."
-                  : "No vehicles to display."}
-            </p>
-          ) : null}
-          {(vehiclesQ.data?.data?.length ?? 0) > 0 ? (
-            <table className="w-full min-w-[640px] text-left text-sm md:text-base">
-              <thead className="text-xs font-semibold uppercase tracking-wide text-zinc-500 md:text-sm">
-                <tr>
-                  <th className="border-b border-vms-border py-3 pr-4">Plate</th>
-                  <th className="border-b border-vms-border py-3 pr-4">Driver</th>
-                  <th className="border-b border-vms-border py-3 pr-4">Fuel %</th>
-                  <th className="border-b border-vms-border py-3">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(vehiclesQ.data?.data ?? []).map((v) => (
-                  <tr key={v.id} className="hover:bg-vms-inset/60">
-                    <td className="border-b border-vms-border py-3 pr-4">
-                      <Link href={`/vehicles/${encodeURIComponent(v.plate)}`} className="font-semibold text-sky-400 hover:underline">
-                        {v.plate}
-                      </Link>
-                    </td>
-                    <td className="border-b border-vms-border py-3 pr-4 text-zinc-200">{v.driverName ?? "—"}</td>
-                    <td className="border-b border-vms-border py-3 pr-4">{v.fuelPercent != null ? `${v.fuelPercent}%` : "—"}</td>
-                    <td className="border-b border-vms-border py-3 text-zinc-300">{v.status}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <p className="text-sm text-zinc-500">No rows for this report. Try a different date range or report type.</p>
           ) : null}
         </CardContent>
       </Card>

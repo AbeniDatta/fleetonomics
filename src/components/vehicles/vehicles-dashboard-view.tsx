@@ -28,10 +28,9 @@ import {
 import type { Alarm, Vehicle } from "@/lib/uctracking/schemas";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { VmsBackBar, VmsLocationToggle, VmsPageHero, VmsStatCard, type VmsLocationFilter } from "@/components/vms/vms-page-blocks";
+import { VmsBackBar, VmsPageHero, VmsStatCard } from "@/components/vms/vms-page-blocks";
 import { cn } from "@/lib/utils";
 
-type LocationFilter = VmsLocationFilter;
 type TableStatusFilter = "all" | "active" | "maintenance" | "offline";
 
 const chartTooltip = {
@@ -151,7 +150,7 @@ function DeviceHealthCard({
             <div className="text-sm text-zinc-500">{total} devices</div>
           </div>
         </div>
-        <ul className="space-y-2 text-sm md:text-base">
+        <ul className="space-y-2 text-sm">
           <li className="flex items-center justify-between">
             <span className="inline-flex items-center gap-2 text-zinc-400">
               <CheckCircle2 className="h-4 w-4 text-emerald-400" /> Online
@@ -186,59 +185,48 @@ function DeviceHealthCard({
 }
 
 export function VehiclesDashboardView() {
-  const [location, setLocation] = useState<LocationFilter>("all");
-  const [tableLocation, setTableLocation] = useState<"all" | "CHO" | "Bonny">("all");
   const [tableStatus, setTableStatus] = useState<TableStatusFilter>("all");
 
   const vehQ = useQuery({ queryKey: ["fleet-vehicles"], queryFn: fetchVehicles });
   const alarmQ = useQuery({ queryKey: ["fleet-alarms"], queryFn: fetchAlarms });
 
-  const locationFiltered = useMemo(() => {
-    const all = vehQ.data?.data ?? [];
-    if (location === "all") return all;
-    return all.filter((v) => {
-      const loc = inferLocation(v.locationLabel);
-      return loc === location || (location === "CHO" && loc === "Other");
-    });
-  }, [vehQ.data?.data, location]);
+  const fleetVehicles = useMemo(() => vehQ.data?.data ?? [], [vehQ.data?.data]);
 
   const metrics = useMemo(() => {
-    const total = locationFiltered.length;
-    const maintenance = locationFiltered.filter((v) => v.status === "parked" || v.status === "idle").length;
-    const active = locationFiltered.filter((v) => v.status !== "offline" && v.status !== "parked" && v.status !== "idle").length;
-    const withFuel = locationFiltered.filter((v) => v.fuelPercent != null);
+    const total = fleetVehicles.length;
+    const maintenance = fleetVehicles.filter((v) => v.status === "parked" || v.status === "idle").length;
+    const active = fleetVehicles.filter((v) => v.status !== "offline" && v.status !== "parked" && v.status !== "idle").length;
+    const withFuel = fleetVehicles.filter((v) => v.fuelPercent != null);
     const avgFuel =
       withFuel.length > 0 ? withFuel.reduce((s, v) => s + (v.fuelPercent ?? 0), 0) / withFuel.length : null;
     const efficiency = avgFuel != null ? (12.5 * avgFuel) / 68 : 12.5;
     const consumption = total > 0 ? Math.round(total * 29.4) : 9760;
     const monthlyCost = total > 0 ? Math.round(consumption * 1750) : 17_100_000;
     return { total, maintenance, active, efficiency, consumption, monthlyCost };
-  }, [locationFiltered]);
+  }, [fleetVehicles]);
 
-  const deviceHealth = useMemo(() => computeDeviceHealth(locationFiltered), [locationFiltered]);
+  const deviceHealth = useMemo(() => computeDeviceHealth(fleetVehicles), [fleetVehicles]);
 
   const theftCount = useMemo(() => {
     const fromAlarms = (alarmQ.data?.data ?? []).filter((a) => /theft|fuel\s*drop|drain/i.test(a.message)).length;
-    const fromVehicles = locationFiltered.filter((v) => /theft|fuel drop/i.test(v.alarmSummary ?? "")).length;
+    const fromVehicles = fleetVehicles.filter((v) => /theft|fuel drop/i.test(v.alarmSummary ?? "")).length;
     const total = fromAlarms + fromVehicles;
     return total > 0 ? total : 2;
-  }, [alarmQ.data?.data, locationFiltered]);
+  }, [alarmQ.data?.data, fleetVehicles]);
 
   const tableRows = useMemo(() => {
-    return locationFiltered.filter((v) => {
-      const loc = inferLocation(v.locationLabel);
-      if (tableLocation !== "all" && loc !== tableLocation && !(tableLocation === "CHO" && loc === "Other")) return false;
+    return fleetVehicles.filter((v) => {
       const st = displayStatus(v);
       if (tableStatus === "active" && st.label !== "Active") return false;
       if (tableStatus === "maintenance" && st.label !== "Maintenance") return false;
       if (tableStatus === "offline" && st.label !== "Offline") return false;
       return true;
     });
-  }, [locationFiltered, tableLocation, tableStatus]);
+  }, [fleetVehicles, tableStatus]);
 
   return (
     <div className="space-y-6 md:space-y-8">
-      <VmsBackBar right={<VmsLocationToggle value={location} onChange={setLocation} />} />
+      <VmsBackBar />
 
       <VmsPageHero
         icon={Car}
@@ -282,12 +270,12 @@ export function VehiclesDashboardView() {
       </div>
 
       <div>
-        <h2 className="mb-4 text-lg font-semibold text-zinc-50 md:text-xl">Device Health Status</h2>
+        <h2 className="vms-page-title mb-4">Device Health Status</h2>
         <div className="grid gap-4 md:grid-cols-3 md:gap-5">
           <DeviceHealthCard
             title="Fuel Management Devices"
             icon={Droplets}
-            total={locationFiltered.length}
+            total={fleetVehicles.length}
             online={deviceHealth.fuel.online}
             warning={deviceHealth.fuel.warning}
             offline={deviceHealth.fuel.offline}
@@ -295,7 +283,7 @@ export function VehiclesDashboardView() {
           <DeviceHealthCard
             title="GPS Tracking"
             icon={MapPin}
-            total={locationFiltered.length}
+            total={fleetVehicles.length}
             online={deviceHealth.gps.online}
             warning={deviceHealth.gps.warning}
             offline={deviceHealth.gps.offline}
@@ -304,7 +292,7 @@ export function VehiclesDashboardView() {
           <DeviceHealthCard
             title="Driver Monitoring System"
             icon={Eye}
-            total={locationFiltered.length}
+            total={fleetVehicles.length}
             online={deviceHealth.dms.online}
             warning={deviceHealth.dms.warning}
             offline={deviceHealth.dms.offline}
@@ -316,7 +304,7 @@ export function VehiclesDashboardView() {
       {theftCount > 0 ? (
         <div className="flex items-start gap-3 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 md:px-5 md:py-4">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-400" />
-          <p className="text-sm text-red-100/90 md:text-base">
+          <p className="text-sm text-red-100/90">
             <span className="font-semibold text-red-50">{theftCount} theft incident(s)</span> detected this month. Review
             security protocols.
           </p>
@@ -397,18 +385,6 @@ export function VehiclesDashboardView() {
           </div>
           <div className="flex flex-wrap gap-2">
             <label className="inline-flex items-center gap-2 rounded-lg border border-vms-border bg-vms-inset px-3 py-2 text-sm text-zinc-300">
-              <MapPin className="h-4 w-4 text-zinc-500" />
-              <select
-                className="bg-transparent outline-none"
-                value={tableLocation}
-                onChange={(e) => setTableLocation(e.target.value as typeof tableLocation)}
-              >
-                <option value="all">All Locations</option>
-                <option value="CHO">CHO</option>
-                <option value="Bonny">Bonny</option>
-              </select>
-            </label>
-            <label className="inline-flex items-center gap-2 rounded-lg border border-vms-border bg-vms-inset px-3 py-2 text-sm text-zinc-300">
               <CheckCircle2 className="h-4 w-4 text-zinc-500" />
               <select
                 className="bg-transparent outline-none"
@@ -429,7 +405,7 @@ export function VehiclesDashboardView() {
           ) : tableRows.length === 0 ? (
             <div className="py-8 text-center text-zinc-500">No vehicles match the current filters.</div>
           ) : (
-            <table className="w-full min-w-[800px] text-left text-sm md:text-base">
+            <table className="w-full min-w-[800px] text-left text-sm">
               <thead className="text-xs font-semibold uppercase tracking-wide text-zinc-500 md:text-sm">
                 <tr>
                   <th className="border-b border-vms-border py-3 pr-4">Vehicle ID</th>

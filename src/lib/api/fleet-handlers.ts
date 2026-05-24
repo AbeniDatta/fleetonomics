@@ -1,4 +1,19 @@
 import { UctrackingClient, getUctrackingConfigFromEnv, isUctrackingConfigured } from "@/lib/uctracking/client";
+import { channelForRole, type CameraRole } from "@/lib/uctracking/camera-channels";
+import { extractDevIdno } from "@/lib/uctracking/extract-dev-idno";
+import { normalizeVideoFileList, vendorVideoQueryFailed } from "@/lib/uctracking/normalize-video-files";
+import { upsertCameraRecordings } from "@/lib/camera-recordings/store";
+import {
+  bucketFuelPointsToHourly,
+  emptyHourlyFuelSeries,
+  sumKmTodayFromStatusRows,
+} from "@/lib/dashboard/metrics";
+import { buildDashboardVehicleTableRows } from "@/lib/dashboard/vehicle-table-rows";
+import {
+  buildFuelPerVehicleRows,
+  fuelPerVehicleMetrics,
+} from "@/lib/uctracking/normalize-fleet-fuel-snapshot";
+import { fuelVelocitySeriesFromRaw } from "@/lib/uctracking/normalize-fuel-report";
 import {
   demoAlarms,
   demoBreath,
@@ -21,7 +36,7 @@ import {
   demoWorkOrders,
   hourlyFuelSeries,
 } from "@/lib/uctracking/demo-data";
-import { alarmSchema, positionSchema, vehicleSchema } from "@/lib/uctracking/schemas";
+import { alarmSchema, positionSchema, vehicleSchema, type Position } from "@/lib/uctracking/schemas";
 
 export async function getVehiclesPayload() {
   const cfg = getUctrackingConfigFromEnv();
@@ -48,12 +63,15 @@ export async function getVehiclesPayload() {
         };
         for (const row of posRows) {
           const r = row as Record<string, unknown>;
-          const plate = String(r.vi ?? r.nm ?? r.vehicleNo ?? r.vid ?? r.devIDNO ?? r.id ?? "");
+          const plate = String(r.vi ?? r.nm ?? r.vehicleNo ?? r.vid ?? "");
+          const devIdno = String(r.devIDNO ?? r.devIdno ?? r.di ?? r.id ?? "").trim();
           const latRaw = Number(r.wd ?? r.lat ?? r.latitude);
           const lngRaw = Number(r.jd ?? r.lng ?? r.longitude);
           const lat = normalizeCoord(latRaw);
           const lng = normalizeCoord(lngRaw);
-          if (!plate || !Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+          const keys = [plate, devIdno].filter(Boolean);
+          if (!keys.length) continue;
           const olRaw = r.ol ?? r.online ?? r.isOnline ?? r.olStatus;
           const olNum =
             typeof olRaw === "number"
@@ -69,13 +87,17 @@ export async function getVehiclesPayload() {
                 : typeof olRaw === "string"
                   ? ["1", "true", "online", "yes"].includes(olRaw.toLowerCase())
                   : undefined;
-          posByPlate.set(plate, {
+          const posEntry = {
             lat,
             lng,
             speedKmh: typeof r.sp === "number" ? (r.sp as number) : typeof r.speed === "number" ? (r.speed as number) : null,
             recordedAt: toIsoFromUnknown(r.tm ?? r.gpsTime ?? r.time ?? r.gpsTimeStr),
-            status: online === false ? "offline" : online === true ? "active" : undefined,
-          });
+            status: (online === false ? "offline" : online === true ? "active" : undefined) as
+              | "active"
+              | "offline"
+              | undefined,
+          };
+          for (const key of keys) posByPlate.set(key, posEntry);
         }
       } catch {
         // ignore enrichment failures; we'll fall back to raw vehicle payload
@@ -83,19 +105,13 @@ export async function getVehiclesPayload() {
       const data = rows.map((row, i) => {
         const r = row as Record<string, unknown>;
         const plate = String(r.nm ?? r.plate ?? r.registration ?? r.name ?? `VEH-${i}`);
-        const pos = posByPlate.get(plate);
+        const devIdno = extractDevIdno(r);
+        const pos = posByPlate.get(plate) ?? (devIdno ? posByPlate.get(devIdno) : undefined);
         const lastSeenAt = pos?.recordedAt ?? null;
         const ageMs = lastSeenAt ? Date.now() - new Date(lastSeenAt).valueOf() : null;
         // If last GPS update is old, treat as offline even if online flag is missing.
         const inferredOffline = ageMs != null && Number.isFinite(ageMs) ? ageMs > 10 * 60 * 1000 : false;
         const online = pos?.status === "active" && !inferredOffline ? true : pos?.status === "offline" || inferredOffline ? false : undefined;
-        const devRaw = r.devIdno ?? r.devIDNO ?? r.DevIDNO ?? r.deviceId ?? r.did ?? r.devId;
-        const devIdno =
-          typeof devRaw === "string" && devRaw.trim().length > 0
-            ? devRaw.trim()
-            : typeof devRaw === "number" && Number.isFinite(devRaw)
-              ? String(devRaw)
-              : null;
         return vehicleSchema.parse({
           // uctracking docs (Get User Vehicle): id (vehicle id), nm (plate number)
           id: String(r.id ?? r.vehicleId ?? i),
@@ -159,7 +175,8 @@ export async function getPositionsPayload() {
       const data = rows
         .map((row) => {
           const r = row as Record<string, unknown>;
-          const plate = String(r.vi ?? r.nm ?? r.vehicleNo ?? r.vid ?? r.devIDNO ?? r.id ?? "");
+          const plate = String(r.vi ?? r.nm ?? r.vehicleNo ?? r.vid ?? "");
+          const devIdno = String(r.devIDNO ?? r.devIdno ?? r.di ?? r.id ?? "").trim();
           const latRaw = Number(r.wd ?? r.lat ?? r.latitude);
           const lngRaw = Number(r.jd ?? r.lng ?? r.longitude);
           const lat = normalizeCoord(latRaw);
@@ -181,8 +198,8 @@ export async function getPositionsPayload() {
                   ? ["1", "true", "online", "yes"].includes(olRaw.toLowerCase())
                   : undefined;
           return positionSchema.parse({
-            vehicleId: String(r.vid ?? r.id ?? r.vehicleId ?? plate),
-            plate,
+            vehicleId: String(r.vid ?? r.id ?? r.vehicleId ?? (plate || devIdno)),
+            plate: plate || devIdno || undefined,
             lat,
             lng,
             speedKmh: typeof r.sp === "number" ? r.sp : typeof r.speed === "number" ? r.speed : null,
@@ -225,13 +242,7 @@ export async function getAlarmsPayload() {
         const plate = (r.nm ?? r.plate ?? r.vehicleNo ?? r.name) as unknown;
         const plateStr = isLikelyPlate(plate) ? plate.trim() : null;
         if (!plateStr) continue;
-        const devRaw = r.devIdno ?? r.devIDNO ?? r.DevIDNO ?? r.deviceId ?? r.did ?? r.devId;
-        const devIdno =
-          typeof devRaw === "string" && devRaw.trim().length > 0
-            ? devRaw.trim()
-            : typeof devRaw === "number" && Number.isFinite(devRaw)
-              ? String(devRaw)
-              : null;
+        const devIdno = extractDevIdno(r);
         const vehId =
           typeof r.id === "string" && r.id.trim().length > 0
             ? r.id.trim()
@@ -372,6 +383,145 @@ export async function getMileagePayload(opts: {
     }
   }
   return { source: "demo" as const, data: { items: [], total: 0, currentPage: 1 } as unknown };
+}
+
+export async function getFooterPayload() {
+  const [vehiclesRes, fuelRes] = await Promise.all([getVehiclesPayload(), getFuelPerVehiclePayload()]);
+  const vehicles = vehiclesRes.data;
+  const fuelMetrics = fuelPerVehicleMetrics(fuelRes.vehicles);
+  const onlineCount = vehicles.filter((v) => v.status !== "offline").length;
+
+  const cfg = getUctrackingConfigFromEnv();
+  const integrationLabel = isUctrackingConfigured(cfg)
+    ? vehiclesRes.source === "uctracking"
+      ? "uctracking · live fleet"
+      : vehiclesRes.source === "error"
+        ? "uctracking · connection issue"
+        : "uctracking"
+    : "Demo data";
+
+  const source =
+    vehiclesRes.source === "uctracking" && fuelRes.source === "uctracking"
+      ? ("uctracking" as const)
+      : vehiclesRes.source === "demo" && fuelRes.source === "demo"
+        ? ("demo" as const)
+        : vehiclesRes.source === "error" || fuelRes.source === "error"
+          ? ("error" as const)
+          : ("demo" as const);
+
+  if (source === "demo") {
+    return { source: "demo" as const, data: demoFooter };
+  }
+
+  return {
+    source,
+    data: {
+      fleetCount: vehicles.length,
+      onlineCount,
+      fuelReportingCount: fuelMetrics.withVolumeCount,
+      movingCount: fuelMetrics.movingCount,
+      integrationLabel,
+      version: "0.1.0",
+    },
+  };
+}
+
+function todayVendorDateTimeRange(): { beginTime: string; endTime: string } {
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  return { beginTime: fmt(start), endTime: fmt(now) };
+}
+
+export async function getDashboardVehicleTablePayload() {
+  const [vehiclesRes, fuelRes, alarmsRes, positionsRes] = await Promise.all([
+    getVehiclesPayload(),
+    getFuelPerVehiclePayload(),
+    getAlarmsPayload(),
+    getPositionsPayload(),
+  ]);
+
+  const vehicles = vehiclesRes.data;
+  const positions = (positionsRes.data ?? []) as Position[];
+  const rows = buildDashboardVehicleTableRows(vehicles, positions, fuelRes.vehicles, alarmsRes.data ?? []);
+
+  const source =
+    vehiclesRes.source === "uctracking" ||
+    fuelRes.source === "uctracking" ||
+    positionsRes.source === "uctracking" ||
+    alarmsRes.source === "uctracking"
+      ? "uctracking"
+      : vehiclesRes.source === "error" ||
+          fuelRes.source === "error" ||
+          positionsRes.source === "error" ||
+          alarmsRes.source === "error"
+        ? "error"
+        : vehiclesRes.source;
+
+  return { source, rows };
+}
+
+export async function getDashboardFuelHourlyPayload(): Promise<{
+  source: string;
+  data: { hour: string; liters: number }[];
+}> {
+  const { beginTime, endTime } = todayVendorDateTimeRange();
+  const details = await getMileageDetailsPayload({
+    beginTime,
+    endTime,
+    byOil: 3,
+    currentPage: 1,
+    pageRecords: 500,
+    vendor: { spacing: "0", changeFuel: "20" },
+  });
+
+  if (details.source === "uctracking" && details.data) {
+    const points = fuelVelocitySeriesFromRaw(details.data);
+    const series = bucketFuelPointsToHourly(points);
+    if (series.some((x) => x.liters > 0)) {
+      return { source: "uctracking", data: series };
+    }
+  }
+
+  if (details.source === "demo") {
+    return { source: "demo", data: hourlyFuelSeries() };
+  }
+
+  return { source: details.source, data: emptyHourlyFuelSeries() };
+}
+
+export async function getFuelPerVehiclePayload() {
+  const vehiclesRes = await getVehiclesPayload();
+  const vehicles = vehiclesRes.data;
+
+  const cfg = getUctrackingConfigFromEnv();
+  if (!isUctrackingConfigured(cfg)) {
+    return {
+      source: vehiclesRes.source,
+      vehicles: buildFuelPerVehicleRows(vehicles, []),
+    };
+  }
+
+  try {
+    const client = new UctrackingClient(cfg);
+    const statusRows = await client.listFrom(cfg.paths.deviceStatusGps, {
+      toMap: 2,
+      geoaddress: 1,
+    });
+    return {
+      source: "uctracking" as const,
+      vehicles: buildFuelPerVehicleRows(vehicles, statusRows),
+    };
+  } catch (e) {
+    console.error("[fleet] fuel per vehicle device status failed", e);
+    return {
+      source: "error" as const,
+      vehicles: buildFuelPerVehicleRows(vehicles, []),
+    };
+  }
 }
 
 export async function getMileageDetailsPayload(opts: {
@@ -929,4 +1079,136 @@ export async function getDeviceStatusGpsPayload(opts: { devIdno?: string; vehicl
     }
   }
   return { source: "demo" as const, data: [] as unknown[] };
+}
+
+export type CameraFeedVehicle = {
+  id: string;
+  plate: string;
+  devIdno: string;
+  driverName: string | null;
+  status: string;
+  online: boolean | null;
+};
+
+export async function getCameraFeedVehiclesPayload(): Promise<{
+  source: string;
+  vehicles: CameraFeedVehicle[];
+}> {
+  const vehiclesRes = await getVehiclesPayload();
+  const positionsRes = await getPositionsPayload();
+  const onlineByPlate = new Map<string, boolean>();
+  for (const p of positionsRes.data as Array<{ plate?: string; status?: string }>) {
+    if (p.plate) onlineByPlate.set(p.plate, p.status !== "offline");
+  }
+
+  const vehicles: CameraFeedVehicle[] = [];
+  for (const v of vehiclesRes.data) {
+    if (!v.devIdno) continue;
+    const online = onlineByPlate.has(v.plate) ? onlineByPlate.get(v.plate)! : v.status !== "offline";
+    vehicles.push({
+      id: v.id,
+      plate: v.plate,
+      devIdno: v.devIdno,
+      driverName: v.driverName ?? null,
+      status: v.status,
+      online,
+    });
+  }
+
+  return { source: vehiclesRes.source, vehicles };
+}
+
+export async function getCameraLiveFeedPayload(opts: { devIdno: string; channel: number }) {
+  const cfg = getUctrackingConfigFromEnv();
+  if (!isUctrackingConfigured(cfg)) {
+    return { source: "demo" as const, error: "uctracking_not_configured" };
+  }
+  try {
+    const client = new UctrackingClient(cfg);
+    await client.startRealtimeVideo({
+      devIdno: opts.devIdno,
+      chn: String(opts.channel),
+      sec: 300,
+      label: "fleetonomics-live",
+    });
+    const hlsUrl = await client.buildHlsUrl({
+      devIdno: opts.devIdno,
+      channel: opts.channel,
+      bitstream: 1,
+      requestType: 1,
+    });
+    const playerUrl = await client.buildPlayerUrl({
+      devIdno: opts.devIdno,
+      channel: opts.channel,
+      stream: 1,
+    });
+    return { source: "uctracking" as const, data: { hlsUrl, playerUrl, channel: opts.channel } };
+  } catch (e) {
+    console.error("[fleet] camera live feed failed", e);
+    return { source: "error" as const, error: String(e) };
+  }
+}
+
+export async function syncCameraRecordingsForRole(role: CameraRole, opts?: { daysBack?: number }) {
+  const cfg = getUctrackingConfigFromEnv();
+  if (!isUctrackingConfigured(cfg)) {
+    return { source: "demo" as const, synced: 0, skipped: 0 };
+  }
+
+  const channel = channelForRole(role);
+  const vehiclesRes = await getCameraFeedVehiclesPayload();
+  const client = new UctrackingClient(cfg);
+  const daysBack = opts?.daysBack ?? 2;
+  let synced = 0;
+  let skipped = 0;
+
+  for (const v of vehiclesRes.vehicles) {
+    for (let d = 0; d < daysBack; d++) {
+      const date = new Date();
+      date.setDate(date.getDate() - d);
+      const year = date.getFullYear();
+      const mon = date.getMonth() + 1;
+      const day = date.getDate();
+
+      let raw: unknown;
+      try {
+        raw = await client.queryVideo({
+          devIdno: v.devIdno,
+          loc: 1,
+          chn: channel,
+          year,
+          mon,
+          day,
+          beg: 0,
+          end: 86399,
+        });
+      } catch {
+        skipped++;
+        continue;
+      }
+
+      const fail = vendorVideoQueryFailed(raw);
+      if (fail.failed) {
+        skipped++;
+        continue;
+      }
+
+      const files = normalizeVideoFileList({
+        raw,
+        devIdno: v.devIdno,
+        plate: v.plate,
+        role,
+        channel,
+        year,
+        mon,
+        day,
+      });
+      if (files.length) {
+        await upsertCameraRecordings(files);
+        synced += files.length;
+      }
+    }
+  }
+
+  return { source: "uctracking" as const, synced, skipped, vehicleCount: vehiclesRes.vehicles.length };
 }

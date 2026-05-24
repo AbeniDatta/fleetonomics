@@ -29,8 +29,8 @@ export default function CompliancePage() {
 
   return (
     <div className="space-y-6 md:space-y-8">
-      <h1 className="mb-4 text-xl font-semibold tracking-tight text-zinc-50 md:mb-6 md:text-2xl">Compliance</h1>
-      <div className="text-sm text-zinc-400 md:text-base">
+      <h1 className="vms-page-title mb-4 md:mb-6">Compliance</h1>
+      <div className="text-sm text-zinc-400">
         Data source: <span className="font-semibold">{data?.source ?? "—"}</span>{" "}
         {data?.source === "mock" ? <span className="text-amber-300">(mock data)</span> : null}
       </div>
@@ -42,7 +42,7 @@ export default function CompliancePage() {
           ["Compliance rate", `${payload?.stats.complianceRate ?? "—"}%`, "text-emerald-600"],
         ].map(([l, v, c]) => (
           <Card key={String(l)} className="p-4 text-center md:p-5">
-            <div className={`text-2xl font-semibold md:text-3xl ${c}`}>{v}</div>
+            <div className={`vms-stat-value ${c}`}>{v}</div>
             <div className="mt-1 text-xs md:text-sm text-zinc-400">{l}</div>
           </Card>
         ))}
@@ -74,7 +74,7 @@ export default function CompliancePage() {
             <CardHeader>
               <CardTitle>Open incidents</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-1 text-sm md:text-base">
+            <CardContent className="space-y-1 text-sm">
               {(payload?.incidents ?? []).map((i) => (
                 <div key={i.id} className="flex justify-between border-b border-border-tertiary py-1 last:border-0">
                   <span className="font-medium">{i.title}</span>
@@ -89,7 +89,7 @@ export default function CompliancePage() {
             <CardHeader>
               <CardTitle>Traffic fines</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-1 text-sm md:text-base">
+            <CardContent className="space-y-1 text-sm">
               {(payload?.fines ?? []).map((f) => (
                 <div key={f.id} className="flex justify-between border-b border-border-tertiary py-1 last:border-0">
                   <span className="font-medium text-nlng-blue">{f.vehiclePlate}</span>
@@ -98,7 +98,7 @@ export default function CompliancePage() {
                   <span className="text-zinc-300">{f.violation}</span>
                 </div>
               ))}
-              <div className="pt-2 text-sm md:text-base text-zinc-400">FRSC export: wire to compliance service when ready.</div>
+              <div className="pt-2 text-sm text-zinc-400">FRSC export: wire to compliance service when ready.</div>
             </CardContent>
           </Card>
         </div>

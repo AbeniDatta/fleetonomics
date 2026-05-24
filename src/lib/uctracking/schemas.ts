@@ -275,12 +275,11 @@ export const dashboardKpiSchema = z.object({
 export type DashboardKpi = z.infer<typeof dashboardKpiSchema>;
 
 export const fleetFooterSchema = z.object({
-  lastSyncSecondsAgo: z.number(),
-  gpsOnline: z.number(),
-  obdOnline: z.number(),
-  fuelSensorOnline: z.number(),
-  dmsOnline: z.number(),
-  tpmsOnline: z.number(),
+  fleetCount: z.number(),
+  onlineCount: z.number(),
+  fuelReportingCount: z.number(),
+  movingCount: z.number(),
+  integrationLabel: z.string(),
   version: z.string(),
 });
 

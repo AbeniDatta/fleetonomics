@@ -7,16 +7,15 @@ import { AlertTriangle, CheckCircle2, Clock, MapPin, Shield, XCircle } from "luc
 import type { Position, Vehicle } from "@/lib/uctracking/schemas";
 import type { SavedGeofence } from "@/lib/geofences/types";
 import { pointInPolygon } from "@/lib/geo/geofence";
+import { cn, ensureArray } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { VmsBackBar, VmsLocationToggle, VmsPageHero, VmsStatCard, type VmsLocationFilter } from "@/components/vms/vms-page-blocks";
+import { VmsBackBar, VmsPageHero, VmsStatCard } from "@/components/vms/vms-page-blocks";
 
 const FleetMapInner = dynamic(() => import("@/components/maps/fleet-map-inner").then((m) => m.FleetMapInner), {
   ssr: false,
   loading: () => <div className="h-[420px] animate-pulse rounded-xl bg-vms-inset md:h-[520px]" />,
 });
-
-type LocationFilter = VmsLocationFilter;
 
 type GeofenceEvent = {
   id: string;
@@ -35,7 +34,6 @@ type ZoneRow = {
   vehicles: number;
   status: "Active" | "Inactive";
   lastBreach: string;
-  location: "CHO" | "Bonny" | "Other";
 };
 
 type BreachRow = {
@@ -46,15 +44,7 @@ type BreachRow = {
   breachType: string;
   time: string;
   at: string;
-  location: "CHO" | "Bonny" | "Other";
 };
-
-function inferLocation(name: string): ZoneRow["location"] {
-  const n = name.toLowerCase();
-  if (n.includes("bonny")) return "Bonny";
-  if (n.includes("cho")) return "CHO";
-  return "Other";
-}
 
 function relativeTime(iso: string): string {
   const t = new Date(iso).valueOf();
@@ -83,7 +73,8 @@ async function fetchGeofences(): Promise<{ geofences: SavedGeofence[] }> {
   const res = await fetch("/api/fleet/geofences");
   if (res.status === 401) return { geofences: [] };
   if (!res.ok) throw new Error("geofences");
-  return res.json();
+  const body = await res.json();
+  return { geofences: ensureArray<SavedGeofence>(body?.geofences ?? body) };
 }
 
 async function fetchGeofenceEvents(): Promise<{ events: GeofenceEvent[] }> {
@@ -91,13 +82,14 @@ async function fetchGeofenceEvents(): Promise<{ events: GeofenceEvent[] }> {
   if (res.status === 401) return { events: [] };
   if (!res.ok) return { events: [] };
   const body = await res.json();
-  return { events: body.events ?? [] };
+  return { events: ensureArray<GeofenceEvent>(body?.events) };
 }
 
 async function fetchPositions(): Promise<Position[]> {
   const res = await fetch("/api/fleet/positions");
   if (!res.ok) return [];
-  return res.json();
+  const body = await res.json();
+  return ensureArray<Position>(body);
 }
 
 async function fetchUserMarkers() {
@@ -110,11 +102,13 @@ async function fetchVehicles(): Promise<Vehicle[]> {
   const res = await fetch("/api/fleet/vehicles");
   if (!res.ok) return [];
   const body = await res.json();
-  return body.data ?? [];
+  return ensureArray<Vehicle>(body?.data ?? body);
 }
 
+const SELECT_ZONE_HINT = "Click a geofence on the map or in the zones table below.";
+
 export function GeoFencingView() {
-  const [location, setLocation] = useState<LocationFilter>("all");
+  const [selectedFenceId, setSelectedFenceId] = useState<string | null>(null);
 
   const geofencesQ = useQuery({
     queryKey: ["fleet-geofences"],
@@ -136,32 +130,37 @@ export function GeoFencingView() {
   const markersQ = useQuery({ queryKey: ["user-markers"], queryFn: fetchUserMarkers, refetchOnWindowFocus: false });
   const vehiclesQ = useQuery({ queryKey: ["fleet-vehicles"], queryFn: fetchVehicles });
 
+  const vehicles = useMemo(() => ensureArray<Vehicle>(vehiclesQ.data), [vehiclesQ.data]);
+  const geofences = useMemo(() => ensureArray<SavedGeofence>(geofencesQ.data?.geofences), [geofencesQ.data?.geofences]);
+  const events = useMemo(() => ensureArray<GeofenceEvent>(eventsQ.data?.events), [eventsQ.data?.events]);
+  const positions = useMemo(() => ensureArray<Position>(positionsQ.data), [positionsQ.data]);
+
   const driverByPlate = useMemo(() => {
     const map = new Map<string, string>();
-    for (const v of vehiclesQ.data ?? []) {
+    for (const v of vehicles) {
       if (v.driverName) map.set(v.plate, v.driverName);
     }
     return map;
-  }, [vehiclesQ.data]);
+  }, [vehicles]);
 
   const lastBreachByFence = useMemo(() => {
     const map = new Map<string, string>();
-    for (const e of eventsQ.data?.events ?? []) {
+    for (const e of events) {
       const prev = map.get(e.fenceId);
       if (!prev || new Date(e.at) > new Date(prev)) map.set(e.fenceId, e.at);
     }
     return map;
-  }, [eventsQ.data?.events]);
+  }, [events]);
 
   const zones = useMemo((): ZoneRow[] => {
-    const saved = [...(geofencesQ.data?.geofences ?? [])].sort(
+    const saved = [...geofences].sort(
       (a, b) => new Date(a.createdAt).valueOf() - new Date(b.createdAt).valueOf(),
     );
-    const positions = positionsQ.data ?? [];
 
     return saved.map((g, i) => {
-      const vehicles = g.ring.length >= 3
-        ? positions.filter((p) => pointInPolygon(g.ring, p.lat, p.lng)).length
+      const ring = Array.isArray(g.ring) ? g.ring : [];
+      const vehicles = ring.length >= 3
+        ? positions.filter((p) => pointInPolygon(ring, p.lat, p.lng)).length
         : 0;
       const lastAt = lastBreachByFence.get(g.id);
       return {
@@ -171,13 +170,12 @@ export function GeoFencingView() {
         vehicles,
         status: g.enabled ? "Active" : "Inactive",
         lastBreach: lastAt ? relativeTime(lastAt) : "—",
-        location: inferLocation(g.name),
       };
     });
-  }, [geofencesQ.data?.geofences, positionsQ.data, lastBreachByFence]);
+  }, [geofences, positions, lastBreachByFence]);
 
   const breaches = useMemo((): BreachRow[] => {
-    return (eventsQ.data?.events ?? [])
+    return events
       .map((e) => ({
         id: e.id,
         vehicle: e.plate,
@@ -186,49 +184,55 @@ export function GeoFencingView() {
         breachType: breachTypeLabel(e.kind),
         time: relativeTime(e.at),
         at: e.at,
-        location: inferLocation(e.fenceName),
       }))
       .sort((a, b) => new Date(b.at).valueOf() - new Date(a.at).valueOf());
-  }, [eventsQ.data?.events, driverByPlate]);
+  }, [events, driverByPlate]);
 
-  const matchesLocation = (loc: ZoneRow["location"]) => {
-    if (location === "all") return true;
-    return loc === location;
-  };
+  const selectedFence = useMemo(
+    () => geofences.find((g) => g.id === selectedFenceId) ?? null,
+    [geofences, selectedFenceId],
+  );
 
-  const filteredZones = useMemo(() => zones.filter((z) => matchesLocation(z.location)), [zones, location]);
-  const filteredBreaches = useMemo(() => breaches.filter((b) => matchesLocation(b.location)), [breaches, location]);
+  const breachesForSelection = useMemo(() => {
+    if (!selectedFence) return breaches;
+    return breaches.filter((b) => b.zone === selectedFence.name);
+  }, [breaches, selectedFence]);
 
   const stats = useMemo(() => {
-    const totalZones = filteredZones.length;
-    const inactive = filteredZones.filter((z) => z.status === "Inactive").length;
+    const totalZones = zones.length;
+    const inactive = zones.filter((z) => z.status === "Inactive").length;
     const active = totalZones - inactive;
-    const positions = positionsQ.data ?? [];
-    const enabledFences = (geofencesQ.data?.geofences ?? []).filter((g) => g.enabled && g.ring.length >= 3);
+    const fleetTotal = vehicles.length > 0 ? vehicles.length : positions.length;
 
-    const platesInZone = new Set<string>();
-    for (const p of positions) {
-      const key = p.plate ?? p.vehicleId;
-      for (const g of enabledFences) {
-        if (!matchesLocation(inferLocation(g.name))) continue;
-        if (pointInPolygon(g.ring, p.lat, p.lng)) {
-          platesInZone.add(key);
-          break;
-        }
-      }
+    let vehiclesInZone: number | null = null;
+    let vehiclesOut: number | null = null;
+
+    if (selectedFence && Array.isArray(selectedFence.ring) && selectedFence.ring.length >= 3) {
+      const ring = selectedFence.ring as [number, number][];
+      vehiclesInZone = positions.filter((p) => pointInPolygon(ring, p.lat, p.lng)).length;
+      vehiclesOut = Math.max(0, fleetTotal - vehiclesInZone);
     }
 
-    const fleetTotal = vehiclesQ.data?.length ?? positions.length;
-    const vehiclesInZone = platesInZone.size;
-    const vehiclesOut = Math.max(0, fleetTotal - vehiclesInZone);
-    const breachCount = filteredBreaches.length;
+    const breachCount = selectedFence ? breachesForSelection.length : breaches.length;
 
-    return { totalZones, inactive, active, vehiclesInZone, vehiclesOut, breachCount };
-  }, [filteredZones, filteredBreaches, positionsQ.data, geofencesQ.data?.geofences, vehiclesQ.data?.length, location]);
+    return {
+      totalZones,
+      inactive,
+      active,
+      vehiclesInZone,
+      vehiclesOut,
+      breachCount,
+      selectedFenceName: selectedFence?.name ?? null,
+    };
+  }, [zones, breachesForSelection, breaches.length, positions, selectedFence, vehicles.length]);
+
+  const toggleFenceSelection = (fenceId: string) => {
+    setSelectedFenceId((cur) => (cur === fenceId ? null : fenceId));
+  };
 
   return (
     <div className="space-y-6 md:space-y-8">
-      <VmsBackBar right={<VmsLocationToggle value={location} onChange={setLocation} />} />
+      <VmsBackBar />
 
       <VmsPageHero
         icon={Shield}
@@ -247,25 +251,25 @@ export function GeoFencingView() {
         />
         <VmsStatCard
           label="Vehicles In Zone"
-          value={stats.vehiclesInZone}
-          sub="Within designated areas"
-          trend="Live from GPS positions"
+          value={stats.vehiclesInZone ?? "—"}
+          sub={stats.selectedFenceName ? `Inside “${stats.selectedFenceName}”` : SELECT_ZONE_HINT}
+          trend={stats.selectedFenceName ? "Live from GPS positions" : ""}
           trendTone="good"
           icon={CheckCircle2}
         />
         <VmsStatCard
           label="Vehicles Out of Zone"
-          value={stats.vehiclesOut}
-          sub="Outside designated areas"
-          trend="Live from GPS positions"
+          value={stats.vehiclesOut ?? "—"}
+          sub={stats.selectedFenceName ? `Outside “${stats.selectedFenceName}”` : SELECT_ZONE_HINT}
+          trend={stats.selectedFenceName ? "Rest of tracked fleet" : ""}
           trendTone="good"
           icon={XCircle}
         />
         <VmsStatCard
           label="Breaches (24h)"
           value={stats.breachCount}
-          sub="Zone violations"
-          trend="Last 24 hours"
+          sub={stats.selectedFenceName ? `For “${stats.selectedFenceName}”` : "All zones (last 24 hours)"}
+          trend={stats.selectedFenceName ? "Selected zone only" : SELECT_ZONE_HINT}
           trendTone={stats.breachCount > 0 ? "bad" : "neutral"}
           icon={AlertTriangle}
         />
@@ -274,9 +278,10 @@ export function GeoFencingView() {
       {stats.breachCount > 0 ? (
         <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 md:px-5 md:py-4">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-nlng-amber" />
-          <p className="text-sm text-amber-100/90 md:text-base">
-            <span className="font-semibold text-amber-50">{stats.breachCount} zone breach(es)</span> in the last 24 hours.
-            Review vehicle locations and driver assignments below.
+          <p className="text-sm text-amber-100/90">
+            <span className="font-semibold text-amber-50">{stats.breachCount} zone breach(es)</span>
+            {stats.selectedFenceName ? ` for “${stats.selectedFenceName}”` : ""} in the last 24 hours. Review vehicle
+            locations and driver assignments below.
           </p>
         </div>
       ) : null}
@@ -285,7 +290,7 @@ export function GeoFencingView() {
         <CardHeader>
           <div>
             <CardTitle>Live fleet map</CardTitle>
-            <p className="mt-1 text-sm text-zinc-400 md:text-base">
+            <p className="mt-1 text-sm text-zinc-400">
               All saved geofence zones are shown on the map. Use <strong className="text-zinc-300">New geofence</strong> and
               click vertices to draw a zone, then name and save it.
             </p>
@@ -294,9 +299,11 @@ export function GeoFencingView() {
         <CardContent className="p-0 sm:p-0">
           <FleetMapInner
             compact
-            positions={positionsQ.data ?? []}
+            positions={positions}
             userMarkers={markersQ.data?.data ?? null}
             userMarkersSource={markersQ.data?.source}
+            selectedFenceId={selectedFenceId}
+            onSelectedFenceIdChange={setSelectedFenceId}
           />
         </CardContent>
       </Card>
@@ -305,18 +312,20 @@ export function GeoFencingView() {
         <CardHeader>
           <div>
             <CardTitle>Geo Fence Zones</CardTitle>
-            <p className="mt-1 text-sm text-zinc-400 md:text-base">All geofencing zones created on the map.</p>
+            <p className="mt-1 text-sm text-zinc-400">
+              All geofencing zones created on the map. Click a row to show in/out counts for that zone above.
+            </p>
           </div>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           {geofencesQ.isLoading ? (
             <div className="py-8 text-center text-zinc-500">Loading zones…</div>
-          ) : filteredZones.length === 0 ? (
+          ) : zones.length === 0 ? (
             <div className="py-8 text-center text-zinc-500">
               No geofence zones yet. Use the map above to draw and save a zone.
             </div>
           ) : (
-            <table className="w-full min-w-[720px] text-left text-sm md:text-base">
+            <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="text-xs font-semibold uppercase tracking-wide text-zinc-500 md:text-sm">
                 <tr>
                   <th className="border-b border-vms-border py-3 pr-4">Zone ID</th>
@@ -327,8 +336,23 @@ export function GeoFencingView() {
                 </tr>
               </thead>
               <tbody>
-                {filteredZones.map((z) => (
-                  <tr key={z.fenceId} className="hover:bg-vms-inset/60">
+                {zones.map((z) => (
+                  <tr
+                    key={z.fenceId}
+                    role="button"
+                    tabIndex={0}
+                    className={cn(
+                      "cursor-pointer hover:bg-vms-inset/60",
+                      selectedFenceId === z.fenceId && "bg-sky-950/25 ring-1 ring-inset ring-sky-500/40",
+                    )}
+                    onClick={() => toggleFenceSelection(z.fenceId)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        toggleFenceSelection(z.fenceId);
+                      }
+                    }}
+                  >
                     <td className="border-b border-vms-border py-3 pr-4 font-mono text-zinc-300">{z.id}</td>
                     <td className="border-b border-vms-border py-3 pr-4 font-medium text-zinc-100">{z.name}</td>
                     <td className="border-b border-vms-border py-3 pr-4 tabular-nums text-zinc-200">{z.vehicles}</td>
@@ -353,14 +377,18 @@ export function GeoFencingView() {
         <CardHeader>
           <div>
             <CardTitle>Recent Zone Breaches</CardTitle>
-            <p className="mt-1 text-sm text-zinc-400 md:text-base">All zone breaches in the past 24 hours.</p>
+            <p className="mt-1 text-sm text-zinc-400">
+              {stats.selectedFenceName
+                ? `Breaches for “${stats.selectedFenceName}” in the past 24 hours.`
+                : "All zone breaches in the past 24 hours. Select a zone to filter."}
+            </p>
           </div>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           {eventsQ.isLoading ? (
             <div className="py-8 text-center text-zinc-500">Loading breaches…</div>
           ) : (
-            <table className="w-full min-w-[680px] text-left text-sm md:text-base">
+            <table className="w-full min-w-[680px] text-left text-sm">
               <thead className="text-xs font-semibold uppercase tracking-wide text-zinc-500 md:text-sm">
                 <tr>
                   <th className="border-b border-vms-border py-3 pr-4">Vehicle</th>
@@ -371,14 +399,16 @@ export function GeoFencingView() {
                 </tr>
               </thead>
               <tbody>
-                {filteredBreaches.length === 0 ? (
+                {breachesForSelection.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-8 text-center text-zinc-500">
-                      No zone breaches in the last 24 hours.
+                      {stats.selectedFenceName
+                        ? `No breaches for “${stats.selectedFenceName}” in the last 24 hours.`
+                        : "No zone breaches in the last 24 hours."}
                     </td>
                   </tr>
                 ) : (
-                  filteredBreaches.map((b) => (
+                  breachesForSelection.map((b) => (
                     <tr key={b.id} className="hover:bg-vms-inset/60">
                       <td className="border-b border-vms-border py-3 pr-4 font-semibold text-zinc-100">{b.vehicle}</td>
                       <td className="border-b border-vms-border py-3 pr-4 text-zinc-200">{b.driver}</td>

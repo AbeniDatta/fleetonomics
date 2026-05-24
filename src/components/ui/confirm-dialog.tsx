@@ -36,8 +36,8 @@ export function ConfirmDialog({
             "rounded-xl border border-vms-border bg-vms-card p-4 shadow-2xl md:p-5",
           )}
         >
-          <Dialog.Title className="text-base font-semibold text-zinc-50 md:text-lg">{title}</Dialog.Title>
-          {description ? <Dialog.Description className="mt-2 text-sm text-zinc-400 md:text-base">{description}</Dialog.Description> : null}
+          <Dialog.Title className="text-base font-semibold text-zinc-100">{title}</Dialog.Title>
+          {description ? <Dialog.Description className="mt-2 text-sm text-zinc-400">{description}</Dialog.Description> : null}
 
           <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Dialog.Close asChild>

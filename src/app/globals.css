@@ -3,21 +3,84 @@
 @tailwind utilities;
 
 :root {
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
   --color-background-primary: #1e1e22;
   --color-background-secondary: #252529;
   --color-background-tertiary: #141414;
   --color-border-secondary: #3f3f46;
   --color-border-tertiary: #3f3f46;
-  --color-text-primary: #fafafa;
+  --color-text-primary: #e4e4e7;
   --color-text-secondary: #a1a1aa;
+
+  --nlng-navy: #002060;
+  --nlng-green: #006837;
+  --nlng-lime: #8dc63f;
+  --nlng-cyan: #00aeef;
+
+  /** Soft header surfaces (avoid pure #fff glare) */
+  --nlng-header-bg: #e4eaf0;
+  --nlng-header-bg-end: #dce4ec;
+  --nlng-header-surface: #eef2f6;
+  --nlng-header-border: rgba(0, 32, 96, 0.1);
+  --nlng-header-text: #0c2d5c;
+
+  --nlng-header-gradient: linear-gradient(
+    90deg,
+    var(--nlng-green) 0%,
+    var(--nlng-lime) 45%,
+    var(--nlng-cyan) 100%
+  );
 }
 
-body {
-  font-family: var(--font-sans), system-ui, sans-serif;
-  font-size: 16px;
-  line-height: 1.5;
-  background-color: #141414;
-  color: #fafafa;
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    background-color: #141414;
+    color: var(--color-text-primary);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: inherit;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer components {
+  .vms-page-title {
+    @apply text-xl font-semibold tracking-tight text-zinc-100 md:text-[1.3125rem];
+  }
+
+  .vms-page-lead {
+    @apply mt-1 max-w-3xl text-sm leading-relaxed text-zinc-400;
+  }
+
+  .vms-stat-value {
+    @apply text-2xl font-semibold tabular-nums tracking-tight text-zinc-100;
+  }
+
+  .vms-stat-label {
+    @apply text-xs font-medium text-zinc-500 md:text-sm;
+  }
+
+  .vms-stat-meta {
+    @apply text-xs leading-snug text-zinc-500 md:text-sm;
+  }
 }
 
 .leaflet-container {

@@ -128,7 +128,7 @@ export default function ReportsPage() {
         <Card className="h-fit">
           <CardHeader>
             <CardTitle>Categories</CardTitle>
-            <p className="mt-1 text-sm text-zinc-400 md:text-base">Pick a report family — charts follow the selection label.</p>
+            <p className="mt-1 text-sm text-zinc-400">Pick a report family — charts follow the selection label.</p>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col gap-1 rounded-lg border border-vms-border bg-vms-inset/60 p-1">
@@ -138,7 +138,7 @@ export default function ReportsPage() {
                   type="button"
                   onClick={() => setCat(c)}
                   className={cn(
-                    "rounded-md px-3 py-2.5 text-left text-sm font-medium transition-colors md:px-4 md:py-3 md:text-base",
+                    "rounded-md px-3 py-2.5 text-left text-sm font-medium transition-colors md:px-4 md:py-3",
                     c === cat ? "bg-nlng-amber text-white shadow-sm" : "text-zinc-400 hover:text-zinc-200",
                   )}
                 >
@@ -154,7 +154,7 @@ export default function ReportsPage() {
             <CardHeader>
               <div>
                 <CardTitle>Mileage trend</CardTitle>
-                <p className="mt-1 text-sm text-zinc-400 md:text-base">Category: {cat}</p>
+                <p className="mt-1 text-sm text-zinc-400">Category: {cat}</p>
               </div>
               <div className="flex flex-wrap gap-4 text-xs md:text-sm">
                 <span className="inline-flex items-center gap-2 text-zinc-400">
@@ -187,7 +187,7 @@ export default function ReportsPage() {
             <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <CardTitle>Top vehicles (km · score)</CardTitle>
-                <p className="mt-1 text-sm text-zinc-400 md:text-base">Illustrative leaderboard until mileage ranking API lands.</p>
+                <p className="mt-1 text-sm text-zinc-400">Illustrative leaderboard until mileage ranking API lands.</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" type="button">
@@ -199,7 +199,7 @@ export default function ReportsPage() {
               </div>
             </CardHeader>
             <CardContent className="overflow-x-auto">
-              <table className="w-full min-w-[480px] text-left text-sm md:text-base">
+              <table className="w-full min-w-[480px] text-left text-sm">
                 <thead className="text-xs font-semibold uppercase tracking-wide text-zinc-500 md:text-sm">
                   <tr>
                     <th className="border-b border-vms-border py-3 pr-4">Plate</th>

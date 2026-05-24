@@ -11,8 +11,17 @@ const config: Config = {
     extend: {
       colors: {
         nlng: {
-          blue: "#00529B",
-          nav: "#003F7A",
+          /** Deep navy from NLNG wordmark */
+          navy: "#002060",
+          /** Legacy alias — maps to logo navy for UI chrome */
+          blue: "#002060",
+          nav: "#001533",
+          /** Swoosh greens + cyan from NLNG logo */
+          green: "#006837",
+          lime: "#8DC63F",
+          cyan: "#00AEEF",
+          sky: "#4FC3F7",
+          /** Kept for charts / fuel accents */
           amber: "#F4A62A",
         },
         /** Dark VMS shell (dashboard canvas ~ #1212–#181818) */

@@ -38,19 +38,19 @@ function LoginForm() {
           <Image src="/brand/nlng.png" alt="NLNG" priority className="h-7 w-auto" width={140} height={32} />
           <Image src="/brand/fleetonomics.png" alt="Fleetonomics" priority className="h-7 w-auto" width={180} height={32} />
         </div>
-        <CardTitle className="text-xl md:text-2xl">Fleetonomics VMS</CardTitle>
-        <p className="text-base text-zinc-400 md:text-lg">Sign in with your demo credentials from `.env.local`.</p>
+        <CardTitle className="text-lg">Fleetonomics VMS</CardTitle>
+        <p className="text-sm text-zinc-400">Sign in with your demo credentials from `.env.local`.</p>
       </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit} className="space-y-5">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-300 md:text-base" htmlFor="email">
+            <label className="text-sm font-medium text-zinc-300" htmlFor="email">
               Email
             </label>
             <Input id="email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-300 md:text-base" htmlFor="password">
+            <label className="text-sm font-medium text-zinc-300" htmlFor="password">
               Password
             </label>
             <Input
@@ -62,8 +62,8 @@ function LoginForm() {
               required
             />
           </div>
-          {error ? <p className="text-sm text-red-400 md:text-base">{error}</p> : null}
-          <Button type="submit" className="h-12 w-full text-base md:h-14 md:text-lg" disabled={loading}>
+          {error ? <p className="text-sm text-red-400">{error}</p> : null}
+          <Button type="submit" className="h-12 w-full text-base md:h-14" disabled={loading}>
             {loading ? "Signing in…" : "Sign in"}
           </Button>
         </form>
@@ -75,7 +75,7 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-vms-canvas p-8 md:p-10">
-      <Suspense fallback={<div className="text-base text-zinc-400 md:text-lg">Loading…</div>}>
+      <Suspense fallback={<div className="text-base text-zinc-400">Loading…</div>}>
         <LoginForm />
       </Suspense>
     </div>

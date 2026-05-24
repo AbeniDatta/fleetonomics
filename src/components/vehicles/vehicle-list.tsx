@@ -57,10 +57,10 @@ export function VehicleList() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <Button variant="secondary" size="sm" className="md:h-11 md:px-4 md:text-base">
+        <Button variant="secondary" size="sm" className="md:h-11 md:px-4">
           Filters
         </Button>
-        <Button size="sm" className="bg-nlng-amber text-white hover:bg-nlng-amber/90 md:h-11 md:px-4 md:text-base">
+        <Button size="sm" className="bg-nlng-amber text-white hover:bg-nlng-amber/90 md:h-11 md:px-4">
           + Add vehicle
         </Button>
       </div>
@@ -68,10 +68,10 @@ export function VehicleList() {
       <Card>
         <CardHeader>
           <CardTitle>All vehicles</CardTitle>
-          <span className="text-sm text-zinc-400 md:text-base">{filtered.length} shown</span>
+          <span className="text-sm text-zinc-400">{filtered.length} shown</span>
         </CardHeader>
         <CardContent className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm md:text-base">
+          <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="text-xs font-semibold uppercase tracking-wide text-zinc-500 md:text-sm">
               <tr>
                 <th className="border-b border-vms-border py-3">Plate</th>

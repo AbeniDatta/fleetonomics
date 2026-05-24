@@ -13,7 +13,7 @@ export function VmsBackBar({ right }: { right?: ReactNode }) {
     <div className="flex flex-wrap items-center justify-between gap-3">
       <Link
         href="/dashboard"
-        className="inline-flex items-center gap-2 text-sm text-zinc-400 transition-colors hover:text-zinc-200 md:text-base"
+        className="inline-flex items-center gap-2 text-sm text-zinc-400 transition-colors hover:text-zinc-200"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to Dashboard
@@ -31,7 +31,7 @@ export function VmsPageHero({
 }: {
   icon: ComponentType<{ className?: string }>;
   title: string;
-  description: string;
+  description?: string;
   meta?: ReactNode;
 }) {
   return (
@@ -41,11 +41,11 @@ export function VmsPageHero({
           <Icon className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-zinc-50 md:text-2xl">{title}</h1>
-          <p className="mt-1 max-w-3xl text-sm text-zinc-400 md:text-base">{description}</p>
+          <h1 className="vms-page-title">{title}</h1>
+          {description?.trim() ? <p className="vms-page-lead">{description}</p> : null}
         </div>
       </div>
-      {meta ? <div className="flex flex-shrink-0 flex-wrap items-center gap-2 text-sm text-zinc-400 md:text-base">{meta}</div> : null}
+      {meta ? <div className="flex flex-shrink-0 flex-wrap items-center gap-2 text-sm text-zinc-400">{meta}</div> : null}
     </div>
   );
 }
@@ -70,7 +70,7 @@ export function VmsLocationToggle({
           type="button"
           onClick={() => onChange(item.id)}
           className={cn(
-            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors md:px-4 md:py-2 md:text-base",
+            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors md:px-4 md:py-2",
             value === item.id ? "bg-nlng-amber text-white shadow-sm" : "text-zinc-400 hover:text-zinc-200",
           )}
         >
@@ -85,17 +85,21 @@ export function VmsStatCard({
   label,
   value,
   sub,
+  subTone = "neutral",
   trend,
-  trendTone,
+  trendTone = "neutral",
   icon: Icon,
 }: {
   label: string;
   value: string | number;
   sub: string;
-  trend: string;
-  trendTone: "good" | "bad" | "neutral";
+  subTone?: "good" | "bad" | "neutral";
+  trend?: string;
+  trendTone?: "good" | "bad" | "neutral";
   icon: ComponentType<{ className?: string }>;
 }) {
+  const subClass =
+    subTone === "good" ? "text-emerald-400" : subTone === "bad" ? "text-red-400" : "text-zinc-400";
   const trendClass =
     trendTone === "good" ? "text-emerald-400" : trendTone === "bad" ? "text-red-400" : "text-zinc-400";
   return (
@@ -103,11 +107,11 @@ export function VmsStatCard({
       <div className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-lg bg-nlng-amber/15 text-nlng-amber">
         <Icon className="h-5 w-5" />
       </div>
-      <CardContent className="space-y-2 pt-1">
-        <div className="text-sm text-zinc-400 md:text-base">{label}</div>
-        <div className="text-3xl font-semibold tabular-nums tracking-tight text-zinc-50 md:text-4xl">{value}</div>
-        <div className="text-sm text-zinc-500 md:text-base">{sub}</div>
-        <div className={cn("text-sm md:text-base", trendClass)}>{trend}</div>
+      <CardContent className="space-y-1.5 pt-1">
+        <div className="vms-stat-label">{label}</div>
+        <div className="vms-stat-value">{value}</div>
+        <div className={cn("vms-stat-meta", subClass)}>{sub}</div>
+        {trend ? <div className={cn("vms-stat-meta", trendClass)}>{trend}</div> : null}
       </CardContent>
     </Card>
   );

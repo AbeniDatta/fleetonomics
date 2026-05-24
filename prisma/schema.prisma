@@ -129,3 +129,30 @@ model FleetReportCache {
   @@unique([cacheKey])
   @@index([endpoint, fetchedAt(sort: Desc)])
 }
+
+// ---------------------------------------------------------------------------
+// DMS / ADAS camera recordings — synced from uctracking getVideoFileInfo
+// ---------------------------------------------------------------------------
+
+model CameraRecording {
+  id            String    @id @default(cuid())
+  devIdno       String    @db.VarChar(64)
+  plate         String    @db.VarChar(64)
+  role          String    @db.VarChar(8) // DMS | ADAS
+  channel       Int
+  fileKey       String    @db.VarChar(512)
+  fileName      String?   @db.VarChar(512)
+  beginAt       DateTime
+  endAt         DateTime?
+  durationSec   Int?
+  fileSizeBytes Int?
+  loc           Int?
+  playbackPath  String?   @db.Text
+  raw           Json?
+  syncedAt      DateTime  @default(now())
+
+  @@unique([fileKey])
+  @@index([role, beginAt(sort: Desc)])
+  @@index([devIdno, channel, beginAt(sort: Desc)])
+  @@index([plate, beginAt(sort: Desc)])
+}

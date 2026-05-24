@@ -23,8 +23,8 @@ export default function MaintenancePage() {
 
   return (
     <div className="space-y-6 md:space-y-8">
-      <h1 className="mb-4 text-xl font-semibold tracking-tight text-zinc-50 md:mb-6 md:text-2xl">Maintenance</h1>
-      <div className="text-sm text-zinc-400 md:text-base">
+      <h1 className="vms-page-title mb-4 md:mb-6">Maintenance</h1>
+      <div className="text-sm text-zinc-400">
         Data source: <span className="font-semibold">{data?.source ?? "—"}</span>{" "}
         {data?.source === "mock" ? <span className="text-amber-300">(mock data)</span> : null}
       </div>
@@ -36,7 +36,7 @@ export default function MaintenancePage() {
           ["Spend MTD", `₦${((payload?.stats.spendMtdNgn ?? 0) / 1_000_000).toFixed(1)}M`, "text-nlng-blue"],
         ].map(([l, v, c]) => (
           <Card key={String(l)} className="p-4 text-center md:p-5">
-            <div className={`text-2xl font-semibold md:text-3xl ${c}`}>{v}</div>
+            <div className={`vms-stat-value ${c}`}>{v}</div>
             <div className="mt-1 text-xs md:text-sm text-zinc-400">{l}</div>
           </Card>
         ))}
@@ -48,7 +48,7 @@ export default function MaintenancePage() {
             <CardTitle>Open work orders</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm md:text-base">
+            <table className="w-full min-w-[640px] text-left text-sm">
               <thead className="text-xs md:text-sm uppercase text-zinc-400">
                 <tr>
                   <th className="border-b border-border-tertiary py-2">WO</th>
@@ -86,7 +86,7 @@ export default function MaintenancePage() {
             <CardHeader>
               <CardTitle>OBD fault codes</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-1 text-sm md:text-base">
+            <CardContent className="space-y-1 text-sm">
               {(payload?.faults ?? []).map((f, i) => (
                 <div key={i} className="flex justify-between border-b border-border-tertiary py-1 last:border-0">
                   <span className="font-medium text-nlng-blue">{f.vehiclePlate}</span>
@@ -102,7 +102,7 @@ export default function MaintenancePage() {
             <CardHeader>
               <CardTitle>Spare parts</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-1 text-sm md:text-base">
+            <CardContent className="space-y-1 text-sm">
               {(payload?.parts ?? []).map((p) => (
                 <div key={p.name} className="flex justify-between border-b border-border-tertiary py-1 last:border-0">
                   <span>{p.name}</span>

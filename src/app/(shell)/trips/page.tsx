@@ -23,8 +23,8 @@ export default function TripsPage() {
 
   return (
     <div className="space-y-6 md:space-y-8">
-      <h1 className="mb-4 text-xl font-semibold tracking-tight text-zinc-50 md:mb-6 md:text-2xl">Trips</h1>
-      <div className="text-sm text-zinc-400 md:text-base">
+      <h1 className="vms-page-title mb-4 md:mb-6">Trips</h1>
+      <div className="text-sm text-zinc-400">
         Data source: <span className="font-semibold">{data?.source ?? "—"}</span>{" "}
         {data?.source === "mock" ? <span className="text-amber-300">(mock data)</span> : null}
       </div>
@@ -36,7 +36,7 @@ export default function TripsPage() {
           ["km today", payload?.stats.kmToday?.toLocaleString() ?? "—", "text-nlng-blue"],
         ].map(([l, v, c]) => (
           <Card key={String(l)} className="p-4 text-center md:p-5">
-            <div className={`text-2xl font-semibold md:text-3xl ${c}`}>{v}</div>
+            <div className={`vms-stat-value ${c}`}>{v}</div>
             <div className="mt-1 text-xs md:text-sm text-zinc-400">{l}</div>
           </Card>
         ))}
@@ -48,7 +48,7 @@ export default function TripsPage() {
             <CardTitle>Ongoing trips</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm md:text-base">
+            <table className="w-full min-w-[640px] text-left text-sm">
               <thead className="text-xs md:text-sm uppercase text-zinc-400">
                 <tr>
                   <th className="border-b border-border-tertiary py-2">Plate</th>
@@ -86,7 +86,7 @@ export default function TripsPage() {
           <CardHeader>
             <CardTitle>Pending trip requests</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm md:text-base">
+          <CardContent className="space-y-2 text-sm">
             {(payload?.requests ?? []).map((r) => (
               <div key={r.id} className="rounded-md bg-surface-secondary p-2">
                 <div className="flex justify-between">

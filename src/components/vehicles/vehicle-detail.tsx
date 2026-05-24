@@ -250,7 +250,7 @@ export function VehicleDetail({ plate }: { plate: string }) {
   }, [vehicle?.plate]);
 
   if (detailQ.isLoading) {
-    return <div className="text-base text-zinc-400 md:text-lg">Loading vehicle…</div>;
+    return <div className="text-base text-zinc-400">Loading vehicle…</div>;
   }
   if (detailQ.error || !vehicle || !live) {
     return (
@@ -258,7 +258,7 @@ export function VehicleDetail({ plate }: { plate: string }) {
         <Button variant="secondary" size="sm" asChild>
           <Link href="/vehicles">← Back to vehicles</Link>
         </Button>
-        <div className="text-base text-red-400 md:text-lg">Vehicle not found.</div>
+        <div className="text-base text-red-400">Vehicle not found.</div>
       </div>
     );
   }
@@ -281,7 +281,7 @@ export function VehicleDetail({ plate }: { plate: string }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="secondary" size="sm" className="md:h-11 md:px-4 md:text-base" asChild>
+        <Button variant="secondary" size="sm" className="md:h-11 md:px-4" asChild>
           <Link href="/vehicles">
             <ArrowLeft className="mr-1.5 h-4 w-4" />
             Back to vehicles
